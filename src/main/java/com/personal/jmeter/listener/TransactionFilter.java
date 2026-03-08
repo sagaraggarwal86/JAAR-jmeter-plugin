@@ -10,7 +10,7 @@ import java.util.regex.PatternSyntaxException;
  *
  * <ul>
  *   <li>Blank pattern always matches everything (no-filter state).</li>
- *   <li>Plain-text mode: case-insensitive substring match.</li>
+ *   <li>Plain-text mode: case-insensitive substring match..</li>
  *   <li>RegEx mode: uses {@link Pattern}; invalid patterns never throw —
  *       they produce no matches. Compiled patterns are cached to avoid
  *       recompilation on every table row during live search.</li>
