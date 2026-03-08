@@ -41,6 +41,8 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Override in settings.xml or with -Dgpg.executable=gpg for CI/CD -->
+        <gpg.executable>C:\Program Files\GnuPG\bin\gpg.exe</gpg.executable>
     </properties>
 
     <dependencyManagement>
@@ -176,14 +178,14 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- ── AI Report: JSON serialisation ──────────────────────── -->
+        <!-- AI Report: JSON serialisation -->
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
             <version>2.10.1</version>
         </dependency>
 
-        <!-- ── AI Report: Markdown → HTML rendering ───────────────── -->
+        <!-- AI Report: Markdown to HTML rendering -->
         <dependency>
             <groupId>org.commonmark</groupId>
             <artifactId>commonmark</artifactId>
@@ -271,7 +273,7 @@
                         <arg>--pinentry-mode</arg>
                         <arg>loopback</arg>
                     </gpgArguments>
-                    <executable>C:\Program Files\GnuPG\bin\gpg.exe</executable>
+                    <executable>${gpg.executable}</executable>
                 </configuration>
             </plugin>
 
@@ -282,10 +284,10 @@
                 <version>3.5.5</version>
             </plugin>
 
-            <!-- ── Fat JAR: bundle Gson + Commonmark into the plugin JAR ──
-                 JMeter's lib/ext classpath does not include these libraries.
+            <!-- Fat JAR: bundle Gson + Commonmark into the plugin JAR.
+                 JMeter lib/ext classpath does not include these libraries.
                  Shading merges them so the plugin works without extra installs.
-                 JMeter-provided jars (scope=provided) are NOT included.        -->
+                 JMeter-provided jars (scope=provided) are NOT included. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -297,21 +299,23 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
-                            <!-- Keep the original thin JAR alongside the fat JAR -->
                             <shadedArtifactAttached>false</shadedArtifactAttached>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
                                     <excludes>
                                         <!-- Strip signature files to avoid JAR verification errors -->
+                                        <!-- FIX: Removed META-INF/MANIFEST.MF exclusion - excluding it
+                                             caused getManifest() to return null at runtime           -->
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
-                                        <exclude>META-INF/MANIFEST.MF</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
                             <transformers>
+                                <!-- Generates a valid merged MANIFEST.MF in the shaded JAR -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer"/>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
                         </configuration>
