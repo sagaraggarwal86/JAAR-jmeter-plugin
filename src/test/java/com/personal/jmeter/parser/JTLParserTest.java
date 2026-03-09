@@ -1,9 +1,11 @@
 package com.personal.jmeter.parser;
 
+import org.apache.jmeter.util.JMeterUtils;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,9 +21,27 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("JTLParser")
 class JTLParserTest {
 
+    /**
+     * Initialise {@link JMeterUtils#appProperties} once for this test class.
+     *
+     * <p>{@code SampleResult}'s constructor calls {@code JMeterUtils.getPropDefault()},
+     * which logs a WARN and falls back to the default when {@code appProperties} is
+     * {@code null}.  Loading the {@code jmeter.properties} that already sits in
+     * {@code src/test/resources} is sufficient — it declares the five properties
+     * {@code SampleResult} reads at construction time.</p>
+     */
+    @BeforeAll
+    static void initJMeter() {
+        URL propsUrl = JTLParserTest.class.getClassLoader().getResource("jmeter.properties");
+        if (propsUrl != null) {
+            JMeterUtils.loadJMeterProperties(propsUrl.getFile());
+            JMeterUtils.initLocale();
+        }
+    }
+
     private static final String CSV_HEADER =
             "timeStamp,elapsed,label,responseCode,responseMessage,"
-            + "threadName,dataType,success,bytes,sentBytes,Latency,IdleTime,Connect";
+                    + "threadName,dataType,success,bytes,sentBytes,Latency,IdleTime,Connect";
 
     @TempDir
     Path tempDir;

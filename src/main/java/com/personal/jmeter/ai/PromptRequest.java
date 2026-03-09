@@ -8,11 +8,11 @@ import java.util.Objects;
  * <p>Introduced to keep {@link PromptBuilder#build} within the three-parameter limit
  * required by the method design standard.</p>
  *
- * @param users         virtual user count label (blank if unknown)
- * @param scenarioName  test plan name (blank if unknown)
- * @param scenarioDesc  test plan comment / description (blank if unknown)
- * @param startTime     formatted test start time (blank if unknown)
- * @param duration      formatted test duration (blank if unknown)
+ * @param users        virtual user count label (blank if unknown)
+ * @param scenarioName test plan name (blank if unknown)
+ * @param scenarioDesc test plan comment / description (blank if unknown)
+ * @param startTime    formatted test start time (blank if unknown)
+ * @param duration     formatted test duration (blank if unknown)
  */
 public record PromptRequest(
         String users,
@@ -21,13 +21,15 @@ public record PromptRequest(
         String startTime,
         String duration) {
 
-    /** Compact canonical constructor — normalises null fields to empty strings. */
+    /**
+     * Compact canonical constructor — normalises null fields to empty strings.
+     */
     public PromptRequest {
-        users        = Objects.requireNonNullElse(users,        "");
+        users = Objects.requireNonNullElse(users, "");
         scenarioName = Objects.requireNonNullElse(scenarioName, "");
         scenarioDesc = Objects.requireNonNullElse(scenarioDesc, "");
-        startTime    = Objects.requireNonNullElse(startTime,    "");
-        duration     = Objects.requireNonNullElse(duration,     "");
+        startTime = Objects.requireNonNullElse(startTime, "");
+        duration = Objects.requireNonNullElse(duration, "");
     }
 
     /**

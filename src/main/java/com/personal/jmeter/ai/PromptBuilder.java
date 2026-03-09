@@ -28,48 +28,73 @@ public class PromptBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(PromptBuilder.class);
 
-    private static final Gson   GSON        = new GsonBuilder().setPrettyPrinting().create();
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String TOTAL_LABEL = "TOTAL";
-    private static final double MEDIAN      = 0.50;
+    private static final double MEDIAN = 0.50;
 
     // ── Anomaly thresholds ───────────────────────────────────────
-    private static final double THRESHOLD_AVG_MS        = 2_000.0;
-    private static final double THRESHOLD_PCT_MS        = 3_000.0;
-    private static final double THRESHOLD_ERROR_PCT     = 1.0;
+    private static final double THRESHOLD_AVG_MS = 2_000.0;
+    private static final double THRESHOLD_PCT_MS = 3_000.0;
+    private static final double THRESHOLD_ERROR_PCT = 1.0;
     private static final double THRESHOLD_STD_DEV_RATIO = 0.5;
 
-    /** Prefix prepended to every generated prompt. */
+    /**
+     * Prefix prepended to every generated prompt.
+     */
     private static final String PROMPT_PREFIX =
             "You are a senior performance engineer specialising in bottleneck analysis and "
-            + "web diagnostics. Analyse the JMeter load test results below and write a concise "
-            + "professional report. Where response-time trends would normally be visible in a "
-            + "performance chart (e.g. ramp-up latency spikes, throughput plateaus, sustained "
-            + "degradation), infer those patterns from the statistical data provided "
-            + "(avg, median, stdDev, min/max). Apply web-performance diagnostic reasoning: "
-            + "consider DNS/TCP/TLS overhead, connection pool exhaustion, backend processing "
-            + "time, and network bandwidth saturation as candidate root causes when interpreting "
-            + "slow or variable endpoints.\n\n";
+                    + "web diagnostics. Analyse the JMeter load test results below and write a concise "
+                    + "professional report. Where response-time trends would normally be visible in a "
+                    + "performance chart (e.g. ramp-up latency spikes, throughput plateaus, sustained "
+                    + "degradation), infer those patterns from the statistical data provided "
+                    + "(avg, median, stdDev, min/max). Apply web-performance diagnostic reasoning: "
+                    + "consider DNS/TCP/TLS overhead, connection pool exhaustion, backend processing "
+                    + "time, and network bandwidth saturation as candidate root causes when interpreting "
+                    + "slow or variable endpoints.\n\n";
 
     // ─────────────────────────────────────────────────────────────
     // Public API
     // ─────────────────────────────────────────────────────────────
 
+    private static boolean notBlank(String s) {
+        return s != null && !s.isBlank();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // JSON summary
+    // ─────────────────────────────────────────────────────────────
+
+    private static double round2(double value) {
+        return Math.round(value * 100.0) / 100.0;
+    }
+
+    /**
+     * Safely extracts a {@code double} from a map value without unchecked casts.
+     * Returns {@code 0.0} when the value is absent or not a {@link Number}.
+     *
+     * @param value map value to convert
+     * @return numeric value, or 0.0
+     */
+    private static double asDouble(Object value) {
+        return (value instanceof Number n) ? n.doubleValue() : 0.0;
+    }
+
     /**
      * Builds the AI analysis prompt from aggregated JMeter results.
      *
-     * @param results     per-label aggregated statistics; must not be null
-     * @param percentile  percentile to report (1–99)
-     * @param request     scenario context (users, name, description, timing); must not be null
+     * @param results    per-label aggregated statistics; must not be null
+     * @param percentile percentile to report (1–99)
+     * @param request    scenario context (users, name, description, timing); must not be null
      * @return fully assembled prompt string suitable for the Groq API
      */
     public String build(Map<String, SamplingStatCalculator> results,
-                        int           percentile,
+                        int percentile,
                         PromptRequest request) {
         Objects.requireNonNull(results, "results must not be null");
         Objects.requireNonNull(request, "request must not be null");
         log.info("build: building prompt. labels={}, percentile={}", results.size(), percentile);
 
-        String json    = GSON.toJson(buildSummary(results, percentile));
+        String json = GSON.toJson(buildSummary(results, percentile));
         String context = buildContextBlock(request);
 
         return PROMPT_PREFIX
@@ -78,41 +103,37 @@ public class PromptBuilder {
                 + buildReportStructureInstructions(percentile);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // JSON summary
-    // ─────────────────────────────────────────────────────────────
-
     private Map<String, Object> buildSummary(Map<String, SamplingStatCalculator> results,
                                              int percentile) {
         final double pFraction = percentile / 100.0;
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("globalStats",         buildGlobalStats(results, percentile, pFraction));
+        summary.put("globalStats", buildGlobalStats(results, percentile, pFraction));
         summary.put("anomalyTransactions", buildAnomalyTransactions(results, percentile, pFraction));
-        summary.put("errorEndpoints",      buildErrorEndpointList(results));
-        summary.put("slowestEndpoints",    buildSlowestList(results, pFraction, 5));
+        summary.put("errorEndpoints", buildErrorEndpointList(results));
+        summary.put("slowestEndpoints", buildSlowestList(results, pFraction, 5));
         return summary;
     }
 
     private Map<String, Object> buildGlobalStats(Map<String, SamplingStatCalculator> results,
                                                  int percentile, double pFraction) {
-        Map<String, Object>    global = new LinkedHashMap<>();
-        SamplingStatCalculator total  = results.get(TOTAL_LABEL);
+        Map<String, Object> global = new LinkedHashMap<>();
+        SamplingStatCalculator total = results.get(TOTAL_LABEL);
         if (total == null || total.getCount() == 0) return global;
 
-        final long totalCount  = total.getCount();
+        final long totalCount = total.getCount();
         final long failedCount = Math.round(total.getErrorPercentage() * totalCount);
 
-        global.put("totalRequests",         totalCount);
-        global.put("totalPassed",           totalCount - failedCount);
-        global.put("totalFailed",           failedCount);
-        global.put("avgResponseMs",         round2(total.getMean()));
-        global.put("medianResponseMs",      round2(total.getPercentPoint(MEDIAN).doubleValue()));
-        global.put("minResponseMs",         total.getMin().longValue());
-        global.put("maxResponseMs",         total.getMax().longValue());
-        global.put(percentile + "thPctMs",  round2(total.getPercentPoint(pFraction).doubleValue()));
-        global.put("stdDevMs",              round2(total.getStandardDeviation()));
-        global.put("errorRatePct",          round2(total.getErrorPercentage() * 100.0));
-        global.put("throughputTPS",         round2(total.getRate()));
+        global.put("totalRequests", totalCount);
+        global.put("totalPassed", totalCount - failedCount);
+        global.put("totalFailed", failedCount);
+        global.put("avgResponseMs", round2(total.getMean()));
+        global.put("medianResponseMs", round2(total.getPercentPoint(MEDIAN).doubleValue()));
+        global.put("minResponseMs", total.getMin().longValue());
+        global.put("maxResponseMs", total.getMax().longValue());
+        global.put(percentile + "thPctMs", round2(total.getPercentPoint(pFraction).doubleValue()));
+        global.put("stdDevMs", round2(total.getStandardDeviation()));
+        global.put("errorRatePct", round2(total.getErrorPercentage() * 100.0));
+        global.put("throughputTPS", round2(total.getRate()));
         global.put("receivedBandwidthKBps", round2(total.getKBPerSecond()));
         return global;
     }
@@ -128,32 +149,32 @@ public class PromptBuilder {
             SamplingStatCalculator c = entry.getValue();
             if (c.getCount() == 0) continue;
 
-            final double avg    = c.getMean();
-            final double pVal   = c.getPercentPoint(pFraction).doubleValue();
+            final double avg = c.getMean();
+            final double pVal = c.getPercentPoint(pFraction).doubleValue();
             final double errPct = c.getErrorPercentage() * 100.0;
             final double stdDev = c.getStandardDeviation();
 
             boolean isAnomaly = avg > THRESHOLD_AVG_MS
-                    || pVal   > THRESHOLD_PCT_MS
+                    || pVal > THRESHOLD_PCT_MS
                     || errPct > THRESHOLD_ERROR_PCT
                     || (avg > 0 && stdDev / avg > THRESHOLD_STD_DEV_RATIO);
             if (!isAnomaly) continue;
 
-            final long cnt    = c.getCount();
+            final long cnt = c.getCount();
             final long failed = Math.round(c.getErrorPercentage() * cnt);
 
             Map<String, Object> ep = new LinkedHashMap<>();
-            ep.put("label",                 entry.getKey());
-            ep.put("count",                 cnt);
-            ep.put("failed",                failed);
-            ep.put("avgMs",                 round2(avg));
-            ep.put("medianMs",              round2(c.getPercentPoint(MEDIAN).doubleValue()));
-            ep.put(pKey,                    round2(pVal));
-            ep.put("stdDevMs",              round2(stdDev));
-            ep.put("errorRatePct",          round2(errPct));
-            ep.put("throughputTPS",         round2(c.getRate()));
+            ep.put("label", entry.getKey());
+            ep.put("count", cnt);
+            ep.put("failed", failed);
+            ep.put("avgMs", round2(avg));
+            ep.put("medianMs", round2(c.getPercentPoint(MEDIAN).doubleValue()));
+            ep.put(pKey, round2(pVal));
+            ep.put("stdDevMs", round2(stdDev));
+            ep.put("errorRatePct", round2(errPct));
+            ep.put("throughputTPS", round2(c.getRate()));
             ep.put("receivedBandwidthKBps", round2(c.getKBPerSecond()));
-            ep.put("breachedThresholds",    buildBreachList(avg, pVal, errPct, stdDev, percentile));
+            ep.put("breachedThresholds", buildBreachList(avg, pVal, errPct, stdDev, percentile));
             anomalies.add(ep);
         }
 
@@ -162,15 +183,24 @@ public class PromptBuilder {
         return anomalies;
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Context block
+    // ─────────────────────────────────────────────────────────────
+
     private List<String> buildBreachList(double avg, double pVal, double errPct,
                                          double stdDev, int percentile) {
         List<String> breaches = new ArrayList<>();
-        if (avg    > THRESHOLD_AVG_MS)                          breaches.add("avgMs > " + (int) THRESHOLD_AVG_MS + "ms");
-        if (pVal   > THRESHOLD_PCT_MS)                          breaches.add(percentile + "thPct > " + (int) THRESHOLD_PCT_MS + "ms");
-        if (errPct > THRESHOLD_ERROR_PCT)                       breaches.add("errorRate > " + THRESHOLD_ERROR_PCT + "%");
-        if (avg > 0 && stdDev / avg > THRESHOLD_STD_DEV_RATIO)  breaches.add("highVariability (stdDev/avg=" + round2(stdDev / avg) + ")");
+        if (avg > THRESHOLD_AVG_MS) breaches.add("avgMs > " + (int) THRESHOLD_AVG_MS + "ms");
+        if (pVal > THRESHOLD_PCT_MS) breaches.add(percentile + "thPct > " + (int) THRESHOLD_PCT_MS + "ms");
+        if (errPct > THRESHOLD_ERROR_PCT) breaches.add("errorRate > " + THRESHOLD_ERROR_PCT + "%");
+        if (avg > 0 && stdDev / avg > THRESHOLD_STD_DEV_RATIO)
+            breaches.add("highVariability (stdDev/avg=" + round2(stdDev / avg) + ")");
         return breaches;
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Report structure instructions
+    // ─────────────────────────────────────────────────────────────
 
     private List<Map<String, Object>> buildErrorEndpointList(
             Map<String, SamplingStatCalculator> results) {
@@ -180,14 +210,14 @@ public class PromptBuilder {
             SamplingStatCalculator c = entry.getValue();
             if (c.getCount() == 0 || c.getErrorPercentage() <= 0) continue;
 
-            final long   cnt    = c.getCount();
-            final long   failed = Math.round(c.getErrorPercentage() * cnt);
+            final long cnt = c.getCount();
+            final long failed = Math.round(c.getErrorPercentage() * cnt);
             final double errPct = c.getErrorPercentage() * 100.0;
 
             Map<String, Object> ep = new LinkedHashMap<>();
-            ep.put("label",        entry.getKey());
-            ep.put("errorCount",   failed);
-            ep.put("totalCount",   cnt);
+            ep.put("label", entry.getKey());
+            ep.put("errorCount", failed);
+            ep.put("totalCount", cnt);
             ep.put("errorRatePct", round2(errPct));
             errors.add(ep);
         }
@@ -195,6 +225,10 @@ public class PromptBuilder {
                 Double.compare(asDouble(b.get("errorRatePct")), asDouble(a.get("errorRatePct"))));
         return errors;
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────
 
     private List<String> buildSlowestList(Map<String, SamplingStatCalculator> results,
                                           double pFraction, int topN) {
@@ -215,23 +249,15 @@ public class PromptBuilder {
         return top;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Context block
-    // ─────────────────────────────────────────────────────────────
-
     private String buildContextBlock(PromptRequest request) {
         List<String> parts = new ArrayList<>();
-        if (notBlank(request.scenarioName())) parts.add("Scenario: "      + request.scenarioName().trim());
-        if (notBlank(request.users()))        parts.add("Virtual Users: " + request.users().trim());
-        if (notBlank(request.startTime()))    parts.add("Start Time: "    + request.startTime().trim());
-        if (notBlank(request.duration()))     parts.add("Duration: "      + request.duration().trim());
-        if (notBlank(request.scenarioDesc())) parts.add("Description: "   + request.scenarioDesc().trim());
+        if (notBlank(request.scenarioName())) parts.add("Scenario: " + request.scenarioName().trim());
+        if (notBlank(request.users())) parts.add("Virtual Users: " + request.users().trim());
+        if (notBlank(request.startTime())) parts.add("Start Time: " + request.startTime().trim());
+        if (notBlank(request.duration())) parts.add("Duration: " + request.duration().trim());
+        if (notBlank(request.scenarioDesc())) parts.add("Description: " + request.scenarioDesc().trim());
         return parts.isEmpty() ? "Not provided." : String.join("  |  ", parts);
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // Report structure instructions
-    // ─────────────────────────────────────────────────────────────
 
     private String buildReportStructureInstructions(int percentile) {
         return "## Report Structure Required\n\n"
@@ -269,28 +295,5 @@ public class PromptBuilder {
                 + "### 7. Verdict\n"
                 + "State **PASS**, **CONDITIONAL PASS**, or **FAIL** with exactly 3 supporting metric values.\n\n"
                 + "Format in Markdown. Use tables for metrics. Be concise.\n";
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Helpers
-    // ─────────────────────────────────────────────────────────────
-
-    private static boolean notBlank(String s) {
-        return s != null && !s.isBlank();
-    }
-
-    private static double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
-    }
-
-    /**
-     * Safely extracts a {@code double} from a map value without unchecked casts.
-     * Returns {@code 0.0} when the value is absent or not a {@link Number}.
-     *
-     * @param value map value to convert
-     * @return numeric value, or 0.0
-     */
-    private static double asDouble(Object value) {
-        return (value instanceof Number n) ? n.doubleValue() : 0.0;
     }
 }

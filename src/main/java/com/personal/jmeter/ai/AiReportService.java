@@ -32,14 +32,14 @@ import java.util.Objects;
  */
 public class AiReportService {
 
-    private static final Logger log = LoggerFactory.getLogger(AiReportService.class);
-
-    /** Name of the environment variable holding the Groq API key. */
+    /**
+     * Name of the environment variable holding the Groq API key.
+     */
     public static final String ENV_VAR_NAME = "Groq_APIKEY";
-
-    private static final Duration TIMEOUT  = Duration.ofSeconds(120);
-    private static final String   GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-    private static final String   MODEL_ID = "llama-3.3-70b-versatile";
+    private static final Logger log = LoggerFactory.getLogger(AiReportService.class);
+    private static final Duration TIMEOUT = Duration.ofSeconds(120);
+    private static final String GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+    private static final String MODEL_ID = "llama-3.3-70b-versatile";
 
     /**
      * Long-lived singleton — reusing one client allows connection pooling and
@@ -95,6 +95,14 @@ public class AiReportService {
     // Report generation
     // ─────────────────────────────────────────────────────────────
 
+    private static boolean isPresent(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Private implementation
+    // ─────────────────────────────────────────────────────────────
+
     /**
      * Sends {@code prompt} to Groq and returns the AI-generated Markdown report.
      *
@@ -109,13 +117,9 @@ public class AiReportService {
         return callGroq(prompt);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Private implementation
-    // ─────────────────────────────────────────────────────────────
-
     private String callGroq(String prompt) throws IOException {
-        String      requestBody = buildRequestBody(prompt);
-        HttpRequest request     = HttpRequest.newBuilder()
+        String requestBody = buildRequestBody(prompt);
+        HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(GROQ_URL))
                 .timeout(TIMEOUT)
                 .header("Content-Type", "application/json")
@@ -173,9 +177,5 @@ public class AiReportService {
             log.error("extractContent: failed to parse response. reason={}", e.getMessage(), e);
             throw new IOException("Failed to parse Groq API response: " + e.getMessage(), e);
         }
-    }
-
-    private static boolean isPresent(String value) {
-        return value != null && !value.isBlank();
     }
 }

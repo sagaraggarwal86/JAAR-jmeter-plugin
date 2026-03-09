@@ -1,6 +1,5 @@
 package com.personal.jmeter.ai;
 
-import com.personal.jmeter.ai.PromptRequest;
 import com.personal.jmeter.parser.JTLParser;
 import org.apache.jmeter.visualizers.SamplingStatCalculator;
 import org.slf4j.Logger;
@@ -33,10 +32,10 @@ public class AiReportCoordinator {
 
     private static final Logger log = LoggerFactory.getLogger(AiReportCoordinator.class);
 
-    private final PromptBuilder      promptBuilder;
-    private final AiReportService    aiService;
+    private final PromptBuilder promptBuilder;
+    private final AiReportService aiService;
     private final HtmlReportRenderer renderer;
-    private final ExecutorService    executor;
+    private final ExecutorService executor;
 
     /**
      * Constructs the coordinator with all required collaborators.
@@ -51,9 +50,25 @@ public class AiReportCoordinator {
                                HtmlReportRenderer renderer,
                                ExecutorService executor) {
         this.promptBuilder = Objects.requireNonNull(promptBuilder, "promptBuilder must not be null");
-        this.aiService     = Objects.requireNonNull(aiService,     "aiService must not be null");
-        this.renderer      = Objects.requireNonNull(renderer,      "renderer must not be null");
-        this.executor      = Objects.requireNonNull(executor,      "executor must not be null");
+        this.aiService = Objects.requireNonNull(aiService, "aiService must not be null");
+        this.renderer = Objects.requireNonNull(renderer, "renderer must not be null");
+        this.executor = Objects.requireNonNull(executor, "executor must not be null");
+    }
+
+    private static void openInBrowser(String htmlPath) {
+        try {
+            Desktop.getDesktop().browse(new File(htmlPath).toURI());
+        } catch (IOException ex) {
+            log.warn("openInBrowser: could not open default browser. reason={}", ex.getMessage());
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Private workflow
+    // ─────────────────────────────────────────────────────────────
+
+    private static void setProgress(JLabel label, String text) {
+        SwingUtilities.invokeLater(() -> label.setText(text));
     }
 
     /**
@@ -70,17 +85,13 @@ public class AiReportCoordinator {
                       JDialog progressDialog,
                       JLabel progressLabel,
                       JButton triggerBtn) {
-        Objects.requireNonNull(context,        "context must not be null");
+        Objects.requireNonNull(context, "context must not be null");
         Objects.requireNonNull(progressDialog, "progressDialog must not be null");
-        Objects.requireNonNull(progressLabel,  "progressLabel must not be null");
-        Objects.requireNonNull(triggerBtn,     "triggerBtn must not be null");
+        Objects.requireNonNull(progressLabel, "progressLabel must not be null");
+        Objects.requireNonNull(triggerBtn, "triggerBtn must not be null");
 
         executor.submit(() -> executeReport(context, progressDialog, progressLabel, triggerBtn));
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // Private workflow
-    // ─────────────────────────────────────────────────────────────
 
     private void executeReport(ReportContext ctx,
                                JDialog progressDialog,
@@ -133,18 +144,6 @@ public class AiReportCoordinator {
                 "Error", JOptionPane.ERROR_MESSAGE);
     }
 
-    private static void openInBrowser(String htmlPath) {
-        try {
-            Desktop.getDesktop().browse(new File(htmlPath).toURI());
-        } catch (IOException ex) {
-            log.warn("openInBrowser: could not open default browser. reason={}", ex.getMessage());
-        }
-    }
-
-    private static void setProgress(JLabel label, String text) {
-        SwingUtilities.invokeLater(() -> label.setText(text));
-    }
-
     // ─────────────────────────────────────────────────────────────
     // Immutable context record (value object)
     // ─────────────────────────────────────────────────────────────
@@ -155,18 +154,30 @@ public class AiReportCoordinator {
      * all fields are final and all collections are unmodifiable copies.
      */
     public static final class ReportContext {
-        /** Per-label aggregated statistics snapshot. */
+        /**
+         * Per-label aggregated statistics snapshot.
+         */
         public final Map<String, SamplingStatCalculator> results;
-        /** Visible table rows as strings (TOTAL excluded). */
-        public final List<String[]>                      tableRows;
-        /** Ordered list of 30-second time buckets. */
-        public final List<JTLParser.TimeBucket>          timeBuckets;
-        /** Render metadata for the HTML template. */
-        public final HtmlReportRenderer.RenderConfig     config;
-        /** Absolute path to the source JTL file. */
-        public final String                              jtlPath;
-        /** Formatted test duration string. */
-        public final String                              duration;
+        /**
+         * Visible table rows as strings (TOTAL excluded).
+         */
+        public final List<String[]> tableRows;
+        /**
+         * Ordered list of 30-second time buckets.
+         */
+        public final List<JTLParser.TimeBucket> timeBuckets;
+        /**
+         * Render metadata for the HTML template.
+         */
+        public final HtmlReportRenderer.RenderConfig config;
+        /**
+         * Absolute path to the source JTL file.
+         */
+        public final String jtlPath;
+        /**
+         * Formatted test duration string.
+         */
+        public final String duration;
 
         /**
          * Constructs the report context.
@@ -184,12 +195,12 @@ public class AiReportCoordinator {
                              HtmlReportRenderer.RenderConfig config,
                              String jtlPath,
                              String duration) {
-            this.results     = Objects.requireNonNull(results,     "results must not be null");
-            this.tableRows   = Objects.requireNonNull(tableRows,   "tableRows must not be null");
+            this.results = Objects.requireNonNull(results, "results must not be null");
+            this.tableRows = Objects.requireNonNull(tableRows, "tableRows must not be null");
             this.timeBuckets = Objects.requireNonNull(timeBuckets, "timeBuckets must not be null");
-            this.config      = Objects.requireNonNull(config,      "config must not be null");
-            this.jtlPath     = Objects.requireNonNull(jtlPath,     "jtlPath must not be null");
-            this.duration    = duration != null ? duration : "";
+            this.config = Objects.requireNonNull(config, "config must not be null");
+            this.jtlPath = Objects.requireNonNull(jtlPath, "jtlPath must not be null");
+            this.duration = duration != null ? duration : "";
         }
     }
 }

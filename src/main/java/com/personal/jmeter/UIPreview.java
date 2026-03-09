@@ -21,13 +21,17 @@ public class UIPreview {
 
     private static final Logger log = LoggerFactory.getLogger(UIPreview.class);
 
-    /** Minimum window width in pixels. */
-    private static final int WINDOW_MIN_WIDTH  = 960;
-    /** Minimum window height in pixels. */
+    /**
+     * Minimum window width in pixels.
+     */
+    private static final int WINDOW_MIN_WIDTH = 960;
+    /**
+     * Minimum window height in pixels.
+     */
     private static final int WINDOW_MIN_HEIGHT = 500;
 
     private final AggregateReportPanel reportPanel = new AggregateReportPanel();
-    private final JTextField           fileField   = new JTextField("", 40);
+    private final JTextField fileField = new JTextField("", 40);
 
     // ─────────────────────────────────────────────────────────────
     // Entry point
@@ -64,13 +68,33 @@ public class UIPreview {
         });
     }
 
+    private static File resolveStartDirectory(String currentPath) {
+        if (!currentPath.isEmpty()) {
+            File parent = new File(currentPath).getParentFile();
+            if (parent != null && parent.isDirectory()) return parent;
+        }
+        return new File(System.getProperty("user.dir"));
+    }
+
+    private static JLabel makeLabel(String text) {
+        JLabel l = new JLabel(text);
+        l.setFont(AggregateReportPanel.FONT_REGULAR);
+        return l;
+    }
+
+    private static JTextField makeTextField(String text, int cols) {
+        JTextField f = new JTextField(text, cols);
+        f.setFont(AggregateReportPanel.FONT_REGULAR);
+        return f;
+    }
+
     private JPanel buildUI() {
         JPanel root = new JPanel(new BorderLayout(5, 5));
         root.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         JPanel topWrapper = new JPanel(new BorderLayout());
         topWrapper.add(buildTitleBar(), BorderLayout.NORTH);
         topWrapper.add(buildFilePanel(), BorderLayout.CENTER);
-        root.add(topWrapper,  BorderLayout.NORTH);
+        root.add(topWrapper, BorderLayout.NORTH);
         root.add(reportPanel, BorderLayout.CENTER);
         return root;
     }
@@ -97,15 +121,21 @@ public class UIPreview {
         GridBagConstraints c = new GridBagConstraints();
         c.insets = new Insets(4, 4, 4, 4);
         c.anchor = GridBagConstraints.WEST;
-        c.gridx = 0; c.gridy = 0; c.weightx = 0;
+        c.gridx = 0;
+        c.gridy = 0;
+        c.weightx = 0;
         panel.add(makeLabel("Filename"), c);
         fileField.setFont(AggregateReportPanel.FONT_REGULAR);
-        c.gridx = 1; c.fill = GridBagConstraints.HORIZONTAL; c.weightx = 1.0;
+        c.gridx = 1;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
         panel.add(fileField, c);
         JButton browseBtn = new JButton("Browse...");
         browseBtn.setFont(AggregateReportPanel.FONT_REGULAR);
         browseBtn.addActionListener(e -> browseJtl());
-        c.gridx = 2; c.fill = GridBagConstraints.NONE; c.weightx = 0;
+        c.gridx = 2;
+        c.fill = GridBagConstraints.NONE;
+        c.weightx = 0;
         panel.add(browseBtn, c);
         return panel;
     }
@@ -119,25 +149,5 @@ public class UIPreview {
             fileField.setText(selected.getAbsolutePath());
             reportPanel.loadJtlFile(selected.getAbsolutePath(), true);
         }
-    }
-
-    private static File resolveStartDirectory(String currentPath) {
-        if (!currentPath.isEmpty()) {
-            File parent = new File(currentPath).getParentFile();
-            if (parent != null && parent.isDirectory()) return parent;
-        }
-        return new File(System.getProperty("user.dir"));
-    }
-
-    private static JLabel makeLabel(String text) {
-        JLabel l = new JLabel(text);
-        l.setFont(AggregateReportPanel.FONT_REGULAR);
-        return l;
-    }
-
-    private static JTextField makeTextField(String text, int cols) {
-        JTextField f = new JTextField(text, cols);
-        f.setFont(AggregateReportPanel.FONT_REGULAR);
-        return f;
     }
 }
