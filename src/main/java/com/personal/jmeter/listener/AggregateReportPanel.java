@@ -136,7 +136,7 @@ public class AggregateReportPanel extends JPanel {
      * user pauses typing.  This prevents a full two-pass file read on every
      * character in percentileField, startOffsetField, and endOffsetField.
      */
-    private final Timer reloadDebounceTimer = new Timer(300, e -> reloadJtl());
+    private final javax.swing.Timer reloadDebounceTimer = new javax.swing.Timer(300, e -> reloadJtl());
     {
         reloadDebounceTimer.setRepeats(false);
     }

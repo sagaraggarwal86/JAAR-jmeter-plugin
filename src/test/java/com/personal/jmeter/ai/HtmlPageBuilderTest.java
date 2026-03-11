@@ -31,9 +31,9 @@ class HtmlPageBuilderTest {
         }
 
         @Test
-        @DisplayName("empty string returns empty string")
-        void emptyReturnsEmpty() {
-            assertEquals("", HtmlPageBuilder.convertPipeTablesToHtml(""));
+        @DisplayName("empty string returns single newline (one empty line processed)")
+        void emptyReturnsSingleNewline() {
+            assertEquals("\n", HtmlPageBuilder.convertPipeTablesToHtml(""));
         }
 
         @Test

@@ -94,19 +94,14 @@ public class HtmlReportRenderer {
         String chartsBlock  = HtmlPageBuilder.buildChartsSection(timeBuckets);
         String page         = HtmlPageBuilder.buildPage(htmlBody, metricsTable, chartsBlock, config);
 
-        String outPath = deriveOutputPath(jtlFilePath, config.scenarioName, config.threadGroupName);
+        String suggestedName = deriveSuggestedFileName(config.scenarioName);
+        java.io.File startDir = Path.of(jtlFilePath).toAbsolutePath().getParent() != null
+                ? Path.of(jtlFilePath).toAbsolutePath().getParent().toFile()
+                : new java.io.File(System.getProperty("user.dir"));
 
-        // Check if the derived output directory is writable; fall back to save dialog if not
-        Path outDir = Path.of(outPath).toAbsolutePath().getParent();
-        if (outDir != null && (!java.nio.file.Files.isWritable(outDir)
-                || !java.nio.file.Files.isDirectory(outDir))) {
-            log.warn("render: output directory not writable: {}. Prompting user.", outDir);
-            String chosenPath = promptForOutputPath(outPath);
-            if (chosenPath == null) {
-                throw new IOException("Report save cancelled by user. "
-                        + "The original location was not writable: " + outDir);
-            }
-            outPath = chosenPath;
+        String outPath = promptForOutputPath(suggestedName, startDir);
+        if (outPath == null) {
+            throw new IOException("Report save cancelled by user.");
         }
 
         writeReport(page, Path.of(outPath));
@@ -182,26 +177,25 @@ public class HtmlReportRenderer {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Save dialog fallback
+    // Save dialog
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Shows a save dialog on the EDT when the default output directory is not writable.
+     * Shows a save dialog on the EDT so the user chooses where to save the report.
      * Called from the background AI-report thread; blocks until the user responds.
      *
-     * @param suggestedPath the originally derived path (used as default filename)
+     * @param suggestedName the suggested filename (no directory)
+     * @param startDir      the initial directory to open the dialog in
      * @return the user-chosen absolute path, or {@code null} if the user cancelled
      * @throws IOException if the EDT invocation is interrupted
      */
-    private String promptForOutputPath(String suggestedPath) throws IOException {
+    private String promptForOutputPath(String suggestedName, java.io.File startDir) throws IOException {
         final String[] result = {null};
         try {
             javax.swing.SwingUtilities.invokeAndWait(() -> {
-                javax.swing.JFileChooser fc = new javax.swing.JFileChooser();
-                fc.setDialogTitle("Save AI Report — original location not writable");
-                fc.setSelectedFile(new java.io.File(suggestedPath).getName().isEmpty()
-                        ? new java.io.File("AI_Generated_Report.html")
-                        : new java.io.File(new java.io.File(suggestedPath).getName()));
+                javax.swing.JFileChooser fc = new javax.swing.JFileChooser(startDir);
+                fc.setDialogTitle("Save AI Performance Report");
+                fc.setSelectedFile(new java.io.File(suggestedName));
                 fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
                         "HTML Files (*.html)", "html"));
                 if (fc.showSaveDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
@@ -274,18 +268,22 @@ public class HtmlReportRenderer {
     // Path helpers
     // ─────────────────────────────────────────────────────────────
 
-    private static String deriveOutputPath(String jtlFilePath, String scenarioName,
-                                           String threadGroupName) {
-        Path parentDir = Path.of(jtlFilePath).toAbsolutePath().getParent();
+    /**
+     * Builds a suggested filename for the AI report (no directory component).
+     * The user chooses the actual save location via the save dialog.
+     *
+     * @param scenarioName scenario/test plan name (may be null/blank)
+     * @return suggested filename, e.g. {@code AI_Generated_Report_Checkout_20260311_143022.html}
+     */
+    private static String deriveSuggestedFileName(String scenarioName) {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String planPart = sanitizeSegment(scenarioName);
-        String tgPart   = sanitizeSegment(threadGroupName);
 
         StringBuilder name = new StringBuilder("AI_Generated_Report");
         if (!planPart.isEmpty()) name.append('_').append(planPart);
         name.append('_').append(timestamp).append(".html");
 
-        return parentDir.resolve(name.toString()).toString();
+        return name.toString();
     }
 
     private static String sanitizeSegment(String raw) {

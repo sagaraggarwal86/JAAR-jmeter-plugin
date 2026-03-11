@@ -154,14 +154,13 @@ final class AiReportLauncher {
             return;
         }
 
-        String systemPrompt = PromptLoader.load(resolveJmeterHome(), resolvePromptDir());
+        String systemPrompt = PromptLoader.load();
         if (systemPrompt == null) {
             JOptionPane.showMessageDialog(parent,
                     "<html><b>Could not load AI prompt.</b><br><br>"
-                            + "The prompt file could not be found in any of the expected locations.<br>"
-                            + "Please check that the plugin JAR is intact, or place<br>"
-                            + "<tt>ai-reporter-prompt.txt</tt> in <tt>$JMETER_HOME/bin/</tt>.</html>",
-                    "Prompt File Missing", JOptionPane.ERROR_MESSAGE);
+                            + "The bundled prompt resource is missing or empty.<br>"
+                            + "Please verify the plugin JAR is intact and reinstall if needed.</html>",
+                    "Prompt Resource Missing", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
@@ -237,23 +236,6 @@ final class AiReportLauncher {
         if (home == null || home.isBlank()) return null;
         java.io.File f = new java.io.File(home);
         return f.isDirectory() ? f : null;
-    }
-
-    /**
-     * Returns the prompt override directory from {@code ai-reporter.properties},
-     * or {@code null} if not set.
-     */
-    private static String resolvePromptDir() {
-        // Read from properties if available; PromptLoader handles null gracefully
-        try {
-            java.io.File jmeterHome = resolveJmeterHome();
-            java.util.Properties props = AiProviderRegistry.loadProperties(jmeterHome);
-            String dir = props.getProperty("ai.reporter.prompt.dir", "").trim();
-            return dir.isEmpty() ? null : dir;
-        } catch (Exception e) {
-            log.warn("resolvePromptDir: could not read properties. reason={}", e.getMessage());
-            return null;
-        }
     }
 
     private JDialog buildProgressDialog() {
