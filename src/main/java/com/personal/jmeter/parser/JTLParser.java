@@ -153,6 +153,12 @@ public class JTLParser {
         long testStartMs = Long.MAX_VALUE;
         long testEndMs   = Long.MIN_VALUE;
         TreeMap<Long, long[]> bucketMap = new TreeMap<>();
+        // Error-type accumulator: "responseCode | responseMessage" → count
+        Map<String, Long> errorTypeCount = new LinkedHashMap<>();
+        // Latency / Connect accumulators for Advanced Web Diagnostics
+        long totalLatencyMs    = 0L;
+        long totalConnectMs    = 0L;
+        int  latencySampleCount = 0;
 
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(new FileInputStream(filePath), StandardCharsets.UTF_8))) {
@@ -179,9 +185,23 @@ public class JTLParser {
                         : rawElapsed;
                 sr.setStampAndTime(sr.getTimeStamp(), adjusted);
 
+                // Accumulate Latency and Connect for Advanced Web Diagnostics averages.
+                // latencySampleCount counts only non-zero Latency rows: a row with
+                // Latency=0 means the column is absent or was never populated, which
+                // is distinct from true zero-latency (HTTP keep-alive, Connect=0 only).
+                totalLatencyMs += sr.getLatency();
+                totalConnectMs += sr.getConnectTime();
+                if (sr.getLatency() > 0) latencySampleCount++;
+
                 String label = sr.getSampleLabel();
                 results.computeIfAbsent(label, SamplingStatCalculator::new).addSample(sr);
                 totalCalc.addSample(sr);
+
+                // Accumulate failure type for errorTypeSummary
+                if (!sr.isSuccessful()) {
+                    String key = (sr.getResponseCode() + " | " + sr.getResponseMessage()).trim();
+                    errorTypeCount.merge(key, 1L, Long::sum);
+                }
 
                 long sampleStart = sr.getTimeStamp();
                 long sampleEnd   = sampleStart + sr.getTime();
@@ -201,10 +221,22 @@ public class JTLParser {
         if (testStartMs == Long.MAX_VALUE) testStartMs = 0;
         if (testEndMs   == Long.MIN_VALUE) testEndMs   = 0;
 
+        // Derive average Latency and Connect from the accumulated totals.
+        // Divide by totalSampleCount (not latencySampleCount) so the averages are
+        // comparable to avgResponseMs — i.e. averaged over all samples, not just
+        // those where Latency > 0.  latencyPresent drives the prompt's branch logic.
+        final long totalSampleCount = totalCalc.getCount();
+        final long avgLatencyMs     = (latencySampleCount > 0 && totalSampleCount > 0)
+                ? totalLatencyMs / totalSampleCount : 0L;
+        final long avgConnectMs     = (latencySampleCount > 0 && totalSampleCount > 0)
+                ? totalConnectMs / totalSampleCount : 0L;
+        final boolean latencyPresent = latencySampleCount > 0;
+
         List<TimeBucket> timeBuckets = JtlParserCore.buildTimeBuckets(bucketMap, BUCKET_SIZE_MS);
-        log.info("parse: completed. labels={}, samples={}, buckets={}",
-                results.size(), totalCalc.getCount(), timeBuckets.size());
-        return new ParseResult(results, testStartMs, testEndMs, timeBuckets);
+        log.info("parse: completed. labels={}, samples={}, buckets={}, latencyPresent={}",
+                results.size(), totalCalc.getCount(), timeBuckets.size(), latencyPresent);
+        return new ParseResult(results, testStartMs, testEndMs, timeBuckets, errorTypeCount,
+                avgLatencyMs, avgConnectMs, latencyPresent);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -225,23 +257,77 @@ public class JTLParser {
         public final long durationMs;
         /** Ordered list of 30-second time buckets. */
         public final List<TimeBucket> timeBuckets;
+        /**
+         * Top-5 failure types by frequency, each entry containing:
+         * {@code responseCode}, {@code responseMessage}, {@code count}.
+         * Empty list when no failures occurred.
+         */
+        public final List<Map<String, Object>> errorTypeSummary;
+        /**
+         * Average Latency (TTFB) in milliseconds across all filtered samples.
+         * Zero when the {@code Latency} column is absent from the JTL or every
+         * row has {@code Latency = 0} (i.e. {@link #latencyPresent} is false).
+         */
+        public final long avgLatencyMs;
+        /**
+         * Average Connect time in milliseconds across all filtered samples.
+         * Zero when {@link #latencyPresent} is false.
+         */
+        public final long avgConnectMs;
+        /**
+         * {@code true} when at least one sample has a non-zero {@code Latency} value.
+         * Drives the {@code latencyPresent} branch in the AI prompt's
+         * Advanced Web Diagnostics section.
+         */
+        public final boolean latencyPresent;
+
+        private static final int MAX_ERROR_TYPES = 5;
 
         /**
          * Constructs a parse result.
          *
-         * @param results     per-label aggregated statistics
-         * @param startTimeMs epoch millis of first sample
-         * @param endTimeMs   epoch millis of last sample end
-         * @param timeBuckets ordered list of 30-second time buckets
+         * @param results        per-label aggregated statistics
+         * @param startTimeMs    epoch millis of first sample
+         * @param endTimeMs      epoch millis of last sample end
+         * @param timeBuckets    ordered list of 30-second time buckets
+         * @param errorTypeCount raw "responseCode | responseMessage" → count map
+         * @param avgLatencyMs   average Latency ms (0 if absent or all-zero)
+         * @param avgConnectMs   average Connect ms (0 if latencyPresent is false)
+         * @param latencyPresent true iff ≥ 1 non-zero Latency value was seen
          */
         public ParseResult(Map<String, SamplingStatCalculator> results,
                            long startTimeMs, long endTimeMs,
-                           List<TimeBucket> timeBuckets) {
-            this.results     = results;
-            this.startTimeMs = startTimeMs;
-            this.endTimeMs   = endTimeMs;
-            this.durationMs  = Math.max(0, endTimeMs - startTimeMs);
-            this.timeBuckets = timeBuckets != null ? timeBuckets : Collections.emptyList();
+                           List<TimeBucket> timeBuckets,
+                           Map<String, Long> errorTypeCount,
+                           long avgLatencyMs, long avgConnectMs, boolean latencyPresent) {
+            this.results        = results;
+            this.startTimeMs    = startTimeMs;
+            this.endTimeMs      = endTimeMs;
+            this.durationMs     = Math.max(0, endTimeMs - startTimeMs);
+            this.timeBuckets    = timeBuckets != null ? timeBuckets : Collections.emptyList();
+            this.errorTypeSummary = buildErrorTypeSummary(errorTypeCount);
+            this.avgLatencyMs   = avgLatencyMs;
+            this.avgConnectMs   = avgConnectMs;
+            this.latencyPresent = latencyPresent;
+        }
+
+        private static List<Map<String, Object>> buildErrorTypeSummary(
+                Map<String, Long> errorTypeCount) {
+            if (errorTypeCount == null || errorTypeCount.isEmpty())
+                return Collections.emptyList();
+
+            return errorTypeCount.entrySet().stream()
+                    .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                    .limit(MAX_ERROR_TYPES)
+                    .map(e -> {
+                        String[] parts = e.getKey().split(" \\| ", 2);
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("responseCode",    parts[0].trim());
+                        m.put("responseMessage", parts.length > 1 ? parts[1].trim() : "");
+                        m.put("count",           e.getValue());
+                        return m;
+                    })
+                    .collect(java.util.stream.Collectors.toList());
         }
     }
 

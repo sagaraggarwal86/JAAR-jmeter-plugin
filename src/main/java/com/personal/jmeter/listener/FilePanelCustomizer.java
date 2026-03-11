@@ -52,16 +52,20 @@ final class FilePanelCustomizer {
     /**
      * Replaces the Browse button's action so the file chooser opens in the
      * directory of the currently selected file (or the working directory if
-     * no file is set).
+     * no file is set). After the user confirms a selection the path is set
+     * via {@code setFileFn} and the file is immediately loaded via
+     * {@code onLoadFn} — no separate Load button is required.
      *
      * @param container    root container to search recursively
      * @param currentFile  the currently selected file path (may be null/empty)
      * @param setFileFn    callback to update the file path after selection
      * @param ownerComp    parent component for the file-chooser dialog
+     * @param onLoadFn     callback to load and process the selected file
      */
     static void overrideBrowseButton(Container container, String currentFile,
                                      java.util.function.Consumer<String> setFileFn,
-                                     Component ownerComp) {
+                                     Component ownerComp,
+                                     Runnable onLoadFn) {
         for (Component comp : container.getComponents()) {
             if (comp instanceof JButton btn
                     && btn.getText() != null
@@ -77,12 +81,13 @@ final class FilePanelCustomizer {
                     fc.setAcceptAllFileFilterUsed(true);
                     if (fc.showOpenDialog(ownerComp) == JFileChooser.APPROVE_OPTION) {
                         setFileFn.accept(fc.getSelectedFile().getAbsolutePath());
+                        onLoadFn.run();
                     }
                 });
                 btn.setVisible(true);
             }
             if (comp instanceof Container c) {
-                overrideBrowseButton(c, currentFile, setFileFn, ownerComp);
+                overrideBrowseButton(c, currentFile, setFileFn, ownerComp, onLoadFn);
             }
         }
     }
