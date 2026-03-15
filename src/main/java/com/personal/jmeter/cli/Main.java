@@ -10,7 +10,7 @@ import com.personal.jmeter.ai.AiServiceException;
 import com.personal.jmeter.parser.JtlParseException;
 
 /**
- * Command-line entry point for the Configurable Aggregate Report plugin.
+ * Command-line entry point for SPARK — Smart Performance Analyser & Report Kit.
  *
  * <p>Parses a JTL file, calls the configured AI provider, and generates a
  * standalone HTML performance report — no JMeter GUI or Swing required.</p>
@@ -29,7 +29,7 @@ import com.personal.jmeter.parser.JtlParseException;
  *
  * <h3>Usage</h3>
  * <pre>
- * java -cp Configurable_Aggregate_Report.jar com.personal.jmeter.cli.Main \
+ * java -cp spark-jmeter-plugin.jar com.personal.jmeter.cli.Main \
  *   -i results.jtl --provider groq --config ai-reporter.properties
  * </pre>
  */

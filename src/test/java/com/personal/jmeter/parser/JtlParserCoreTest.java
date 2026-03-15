@@ -282,7 +282,7 @@ class JtlParserCoreTest {
         @DisplayName("empty bucketMap produces empty list")
         void emptyMapProducesEmptyList() {
             List<JTLParser.TimeBucket> buckets =
-                    JtlParserCore.buildTimeBuckets(new TreeMap<>(), 30_000L);
+                    JtlParserCore.buildTimeBuckets(new TreeMap<>(), 30_000L, 0L, Long.MAX_VALUE);
             assertTrue(buckets.isEmpty());
         }
 
@@ -293,7 +293,7 @@ class JtlParserCoreTest {
             // acc: [totalElapsed, count, errors, bytes]
             map.put(0L, new long[]{600L, 2L, 0L, 2048L}); // avg = 300ms
             List<JTLParser.TimeBucket> buckets =
-                    JtlParserCore.buildTimeBuckets(map, 30_000L);
+                    JtlParserCore.buildTimeBuckets(map, 30_000L, 0L, Long.MAX_VALUE);
             assertEquals(1, buckets.size());
             assertEquals(300.0, buckets.get(0).avgResponseMs, 0.01);
         }
@@ -305,7 +305,7 @@ class JtlParserCoreTest {
             // 1 error out of 4 samples = 25%
             map.put(0L, new long[]{400L, 4L, 1L, 1024L});
             List<JTLParser.TimeBucket> buckets =
-                    JtlParserCore.buildTimeBuckets(map, 30_000L);
+                    JtlParserCore.buildTimeBuckets(map, 30_000L, 0L, Long.MAX_VALUE);
             assertEquals(25.0, buckets.get(0).errorPct, 0.01);
         }
 
@@ -316,7 +316,7 @@ class JtlParserCoreTest {
             // 30 samples in a 30s bucket = 1.0 TPS
             map.put(0L, new long[]{3000L, 30L, 0L, 0L});
             List<JTLParser.TimeBucket> buckets =
-                    JtlParserCore.buildTimeBuckets(map, 30_000L);
+                    JtlParserCore.buildTimeBuckets(map, 30_000L, 0L, Long.MAX_VALUE);
             assertEquals(1.0, buckets.get(0).tps, 0.01);
         }
 
@@ -328,7 +328,7 @@ class JtlParserCoreTest {
             map.put(30_000L, new long[]{200L, 1L, 0L, 0L});
             map.put(0L,      new long[]{300L, 1L, 0L, 0L});
             List<JTLParser.TimeBucket> buckets =
-                    JtlParserCore.buildTimeBuckets(map, 30_000L);
+                    JtlParserCore.buildTimeBuckets(map, 30_000L, 0L, Long.MAX_VALUE);
             assertEquals(3, buckets.size());
             assertEquals(0L,      buckets.get(0).epochMs);
             assertEquals(30_000L, buckets.get(1).epochMs);
@@ -340,9 +340,9 @@ class JtlParserCoreTest {
         void zeroBucketCountNoDivisionByZero() {
             TreeMap<Long, long[]> map = new TreeMap<>();
             map.put(0L, new long[]{0L, 0L, 0L, 0L});
-            assertDoesNotThrow(() -> JtlParserCore.buildTimeBuckets(map, 30_000L));
+            assertDoesNotThrow(() -> JtlParserCore.buildTimeBuckets(map, 30_000L, 0L, Long.MAX_VALUE));
             List<JTLParser.TimeBucket> buckets =
-                    JtlParserCore.buildTimeBuckets(map, 30_000L);
+                    JtlParserCore.buildTimeBuckets(map, 30_000L, 0L, Long.MAX_VALUE);
             assertEquals(0.0, buckets.get(0).avgResponseMs);
         }
 
@@ -353,7 +353,7 @@ class JtlParserCoreTest {
             // 30720 bytes in a 30s bucket = 1.0 KB/s
             map.put(0L, new long[]{500L, 1L, 0L, 30_720L});
             List<JTLParser.TimeBucket> buckets =
-                    JtlParserCore.buildTimeBuckets(map, 30_000L);
+                    JtlParserCore.buildTimeBuckets(map, 30_000L, 0L, Long.MAX_VALUE);
             assertEquals(1.0, buckets.get(0).kbps, 0.01);
         }
     }

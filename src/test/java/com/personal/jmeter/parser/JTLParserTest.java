@@ -442,6 +442,82 @@ class JTLParserTest {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // computeAutoBucketSizeMs
+    // ─────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("computeAutoBucketSizeMs")
+    class ComputeAutoBucketSizeMsTests {
+
+        @Test
+        @DisplayName("zero minTimestamp returns smallest snap interval")
+        void zeroMinTimestampReturnsSmallestSnap() {
+            long result = JTLParser.computeAutoBucketSizeMs(0L, 0L);
+            assertEquals(10_000L, result, "zero minTimestamp should return 10s snap");
+        }
+
+        @Test
+        @DisplayName("10-minute test snaps to 10s interval")
+        void tenMinuteTestSnapsTo10s() {
+            long minTs = System.currentTimeMillis() - 10 * 60 * 1000L;
+            long result = JTLParser.computeAutoBucketSizeMs(minTs, System.currentTimeMillis());
+            // raw = 600_000 / 120 = 5000ms → snaps up to 10_000ms
+            assertEquals(10_000L, result, "10-min test should snap to 10s bucket");
+        }
+
+        @Test
+        @DisplayName("1-hour test snaps to 30s interval")
+        void oneHourTestSnapsTo30s() {
+            long minTs = System.currentTimeMillis() - 60 * 60 * 1000L;
+            long result = JTLParser.computeAutoBucketSizeMs(minTs, System.currentTimeMillis());
+            // raw = 3_600_000 / 120 = 30_000ms → snaps to exactly 30_000ms
+            assertEquals(30_000L, result, "1-hour test should snap to 30s bucket");
+        }
+
+        @Test
+        @DisplayName("3-hour test snaps to 120s interval")
+        void threeHourTestSnapsTo120s() {
+            long minTs = System.currentTimeMillis() - 3 * 60 * 60 * 1000L;
+            long result = JTLParser.computeAutoBucketSizeMs(minTs, System.currentTimeMillis());
+            // raw = 10_800_000 / 120 = 90_000ms → snaps up to 120_000ms
+            assertEquals(120_000L, result, "3-hour test should snap to 120s bucket");
+        }
+
+        @Test
+        @DisplayName("12-hour test snaps to 300s interval")
+        void twelveHourTestSnapsTo300s() {
+            long minTs = System.currentTimeMillis() - 12 * 60 * 60 * 1000L;
+            long result = JTLParser.computeAutoBucketSizeMs(minTs, System.currentTimeMillis());
+            // raw = 43_200_000 / 120 = 360_000ms → snaps up to 3_600_00ms (600s)
+            assertEquals(600_000L, result, "12-hour test should snap to 600s bucket");
+        }
+
+        @Test
+        @DisplayName("result is always one of the defined snap intervals")
+        void resultIsAlwaysASnapInterval() {
+            long[] snapIntervals = {10_000L, 30_000L, 60_000L, 120_000L,
+                    300_000L, 600_000L, 1_800_000L, 3_600_000L};
+            long[] testDurations = {
+                    5 * 60 * 1000L,       // 5 min
+                    30 * 60 * 1000L,      // 30 min
+                    2 * 60 * 60 * 1000L,  // 2 hours
+                    8 * 60 * 60 * 1000L,  // 8 hours
+                    24 * 60 * 60 * 1000L  // 24 hours
+            };
+            for (long dur : testDurations) {
+                long minTs = System.currentTimeMillis() - dur;
+                long result = JTLParser.computeAutoBucketSizeMs(minTs, System.currentTimeMillis());
+                boolean found = false;
+                for (long snap : snapIntervals) {
+                    if (snap == result) { found = true; break; }
+                }
+                assertTrue(found, "result " + result + "ms for duration " + dur
+                        + "ms must be one of the defined snap intervals");
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Multiple distinct labels
     // ─────────────────────────────────────────────────────────────
 

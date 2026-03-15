@@ -66,8 +66,6 @@ public class AggregateReportPanel extends JPanel {
     static final int    ERROR_RATE_COL_INDEX  = 9;
     /** Model index of Transaction Name — used by SlaRowRenderer. */
     static final int    NAME_COL_INDEX        = 0;
-    static final String TOTAL_LABEL           = "TOTAL";
-
     private static final Logger log = LoggerFactory.getLogger(AggregateReportPanel.class);
 
     // ── Filter fields ────────────────────────────────────────────
@@ -279,6 +277,19 @@ public class AggregateReportPanel extends JPanel {
         endTimeField.setText("");
         durationField.setText("");
         resetSlaFields();
+    }
+
+    /**
+     * Releases the background AI executor when this panel is detached from the
+     * Swing hierarchy (JMeter shutdown or listener removal).
+     * Interrupts any in-progress AI call — the worker thread is a daemon so the
+     * JVM will not block on exit regardless, but explicit shutdown is cleaner.
+     */
+    @Override
+    public void removeNotify() {
+        super.removeNotify();
+        aiExecutor.shutdownNow();
+        log.debug("removeNotify: aiExecutor shut down.");
     }
 
     /**

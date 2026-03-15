@@ -217,11 +217,11 @@ final class CliArgs {
 
     static String helpText() {
         return """
-                Configurable Aggregate Report — CLI Mode
+                SPARK — Smart Performance Analyser & Report Kit  (CLI Mode)
 
                 Usage:
-                  car-cli-report.sh  [options]     (macOS / Linux)
-                  car-cli-report.bat [options]     (Windows)
+                  spark-cli-report.sh  [options]     (macOS / Linux)
+                  spark-cli-report.bat [options]     (Windows)
 
                   Place the wrapper script in $JMETER_HOME/bin/.
                   The plugin JAR must be in $JMETER_HOME/lib/ext/.
@@ -268,13 +268,13 @@ final class CliArgs {
 
                 Examples:
                   # Minimal
-                  car-cli-report.sh -i results.jtl --provider groq --config ai-reporter.properties
+                  spark-cli-report.sh -i results.jtl --provider groq --config ai-reporter.properties
 
                   # Full
-                  car-cli-report.sh \\
+                  spark-cli-report.sh \\
                     -i results.jtl -o report.html \\
                     --provider openai --config /path/to/ai-reporter.properties \\
-                    --start-offset 10 --end-offset 300 --percentile 95 \\mvn 
+                    --start-offset 10 --end-offset 300 --percentile 95 \\
                     --chart-interval 60 --search "Login" \\
                     --scenario-name "Load Test" --description "Peak hour" --virtual-users 200 \\
                     --error-sla 5 --rt-sla 2000 --rt-metric percentile

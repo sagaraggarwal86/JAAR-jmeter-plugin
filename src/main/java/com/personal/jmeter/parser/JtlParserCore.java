@@ -26,27 +26,85 @@ final class JtlParserCore {
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Converts bucket accumulators into an ordered {@link JTLParser.TimeBucket} list.
+     * Converts bucket accumulators into an ordered {@link JTLParser.TimeBucket} list,
+     * dropping partial buckets at the start and end of the test.
      *
-     * @param bucketMap raw accumulator map from Pass 2 (key = bucket epoch ms)
+     * <p>A bucket is considered partial when its effective coverage — the overlap
+     * between the bucket window and the filtered test time range — is less than
+     * {@value #MIN_BUCKET_COVERAGE_RATIO} of {@code bucketSizeMs}. Partial buckets
+     * produce artificially deflated TPS and KB/s values because the denominator
+     * ({@code bucketSizeMs}) is larger than the actual sample window, causing the
+     * chart to misrepresent throughput at the edges of the test run.</p>
+     *
+     * <p>Example: a 30-second bucket containing only 7 seconds of samples at the
+     * end of the test would show TPS as {@code count / 30}, understating it by 4x.
+     * Dropping it removes the misleading data point without affecting the table or
+     * AI analysis, which read from {@link org.apache.jmeter.visualizers.SamplingStatCalculator}
+     * directly.</p>
+     *
+     * @param bucketMap    raw accumulator map from Pass 2 (key = bucket epoch ms)
      * @param bucketSizeMs bucket interval in milliseconds
-     * @return ordered list of time buckets
+     * @param testStartMs  epoch ms of the first included sample (post-filter)
+     * @param testEndMs    epoch ms of the last included sample end (post-filter)
+     * @return ordered list of complete time buckets; partial edge buckets are excluded
      */
     static List<JTLParser.TimeBucket> buildTimeBuckets(TreeMap<Long, long[]> bucketMap,
-                                                       long bucketSizeMs) {
+                                                       long bucketSizeMs,
+                                                       long testStartMs,
+                                                       long testEndMs) {
         List<JTLParser.TimeBucket> list = new ArrayList<>(bucketMap.size());
-        double bucketSec = bucketSizeMs / 1000.0;
+        long minCoverageMs  = (long) (bucketSizeMs * MIN_BUCKET_COVERAGE_RATIO);
+
+        // Guard: if the entire test duration fits within one bucket, there are no
+        // partial edge buckets to drop — every bucket IS the complete data.
+        // Skip the coverage check entirely in this case.
+        long testDurationMs = (testStartMs > 0 && testEndMs > testStartMs)
+                ? testEndMs - testStartMs : 0L;
+        boolean applyCoverageFilter = testDurationMs > bucketSizeMs;
+
         for (Map.Entry<Long, long[]> e : bucketMap.entrySet()) {
-            long[] acc  = e.getValue();
-            long count  = acc[1];
+            long bucketStart = e.getKey();
+            long bucketEnd   = bucketStart + bucketSizeMs;
+
+            // Effective coverage = overlap between bucket window and filtered test range.
+            // Buckets outside [testStartMs, testEndMs] are already absent from bucketMap;
+            // this check catches edge buckets that are only partially covered.
+            long effectiveStart      = Math.max(bucketStart, testStartMs);
+            long effectiveEnd        = Math.min(bucketEnd,   testEndMs);
+            long effectiveCoverageMs = effectiveEnd - effectiveStart;
+
+            if (applyCoverageFilter && effectiveCoverageMs < minCoverageMs) {
+                log.debug("buildTimeBuckets: dropping partial bucket at {}ms " +
+                                "(coverage {}ms < minimum {}ms)",
+                        bucketStart, effectiveCoverageMs, minCoverageMs);
+                continue;
+            }
+
+            long[] acc    = e.getValue();
+            long   count  = acc[1];
+            // Use effectiveCoverageMs as the denominator when it is meaningful
+            // (applyCoverageFilter is true and coverage is a proper sub-window).
+            // Fall back to full bucketSizeMs for short tests where the single
+            // bucket represents the whole test — avoids artificially inflating TPS.
+            double effectiveSec = (applyCoverageFilter && effectiveCoverageMs > 0)
+                    ? effectiveCoverageMs / 1000.0
+                    : bucketSizeMs / 1000.0;
             double avgRt  = count > 0 ? (double) acc[0] / count : 0.0;
             double errPct = count > 0 ? (double) acc[2] / count * 100.0 : 0.0;
-            double tps    = count / bucketSec;
-            double kbps   = (double) acc[3] / bucketSec / 1024.0;
-            list.add(new JTLParser.TimeBucket(e.getKey(), avgRt, errPct, tps, kbps));
+            double tps    = count / effectiveSec;
+            double kbps   = (double) acc[3] / effectiveSec / 1024.0;
+            list.add(new JTLParser.TimeBucket(bucketStart, avgRt, errPct, tps, kbps));
         }
         return list;
     }
+
+    /**
+     * Minimum fraction of {@code bucketSizeMs} that a bucket's effective sample
+     * coverage must meet to be included in the chart output.
+     * Buckets below this threshold are partial edge buckets whose TPS and KB/s
+     * values would be artificially deflated by the full-bucket-size denominator.
+     */
+    private static final double MIN_BUCKET_COVERAGE_RATIO = 0.90;
 
     // ─────────────────────────────────────────────────────────────
     // CSV parsing

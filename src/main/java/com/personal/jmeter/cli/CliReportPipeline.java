@@ -20,8 +20,6 @@ import java.util.*;
  */
 final class CliReportPipeline {
 
-    private static final String TOTAL_LABEL = "TOTAL";
-
     /**
      * Immutable result returned by {@link #execute()}.
      * Carries the output HTML path and the extracted AI verdict.
@@ -58,8 +56,8 @@ final class CliReportPipeline {
         JTLParser.ParseResult result = new JTLParser().parse(args.inputFile(), opts);
         progress("Parsed %d transaction types, %d total samples.",
                 Math.max(0, result.results.size() - 1),
-                result.results.containsKey(TOTAL_LABEL)
-                        ? result.results.get(TOTAL_LABEL).getCount() : 0);
+                result.results.containsKey(JTLParser.TOTAL_LABEL)
+                        ? result.results.get(JTLParser.TOTAL_LABEL).getCount() : 0);
 
         // Step 2 — Build table rows
         List<String[]> tableRows = buildTableRows(result, opts.percentile);
@@ -153,7 +151,7 @@ final class CliReportPipeline {
         for (SamplingStatCalculator calc : result.results.values()) {
             if (calc.getCount() == 0) continue;
             String label = calc.getLabel();
-            if (TOTAL_LABEL.equals(label)) continue;
+            if (JTLParser.TOTAL_LABEL.equals(label)) continue;
 
             // Apply search filter if specified
             if (!args.search().isBlank()

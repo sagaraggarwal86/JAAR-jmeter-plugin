@@ -41,7 +41,6 @@ public class PromptBuilder {
     private static final Logger log = LoggerFactory.getLogger(PromptBuilder.class);
 
     private static final Gson GSON = new GsonBuilder().create(); // compact JSON — reduces AI token payload
-    private static final String TOTAL_LABEL = "TOTAL";
     private static final double MEDIAN = 0.50;
     /**
      * Minimum number of entries always included in {@code slowestEndpoints},
@@ -452,7 +451,7 @@ public class PromptBuilder {
         List<Map.Entry<String, Double>> ranked    = new ArrayList<>();
 
         for (Map.Entry<String, SamplingStatCalculator> entry : results.entrySet()) {
-            if (TOTAL_LABEL.equals(entry.getKey())) continue;
+            if (JTLParser.TOTAL_LABEL.equals(entry.getKey())) continue;
             SamplingStatCalculator c = entry.getValue();
             if (c.getCount() == 0) continue;
 
@@ -481,7 +480,7 @@ public class PromptBuilder {
             // ── Error endpoints accumulator ───────────────────────────────────
             if (c.getErrorPercentage() > 0) {
                 final long cnt    = c.getCount();
-                final long failed = Math.round(c.getErrorPercentage() * cnt);
+                final long failed = Math.min(Math.round(c.getErrorPercentage() * cnt), cnt);
                 Map<String, Object> ep = new LinkedHashMap<>();
                 ep.put("label",            entry.getKey());
                 ep.put("errorCount",       failed);
@@ -500,7 +499,7 @@ public class PromptBuilder {
                     || (avg > 0 && stdDev / avg > THRESHOLD_STD_DEV_RATIO);
             if (isAnomaly) {
                 final long cnt    = c.getCount();
-                final long failed = Math.round(c.getErrorPercentage() * cnt);
+                final long failed = Math.min(Math.round(c.getErrorPercentage() * cnt), cnt);
                 Map<String, Object> ep = new LinkedHashMap<>();
                 ep.put("label",                 entry.getKey());
                 ep.put("count",                 cnt);
@@ -592,11 +591,11 @@ public class PromptBuilder {
                                                  int percentile, double pFraction,
                                                  LatencyContext latency) {
         Map<String, Object> global = new LinkedHashMap<>();
-        SamplingStatCalculator total = results.get(TOTAL_LABEL);
+        SamplingStatCalculator total = results.get(JTLParser.TOTAL_LABEL);
         if (total == null || total.getCount() == 0) return global;
 
         final long totalCount  = total.getCount();
-        final long failedCount = Math.round(total.getErrorPercentage() * totalCount);
+        final long failedCount = Math.min(Math.round(total.getErrorPercentage() * totalCount), totalCount);
 
         global.put("totalRequests",         totalCount);
         global.put("totalPassed",           totalCount - failedCount);

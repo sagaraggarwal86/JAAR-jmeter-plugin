@@ -23,8 +23,6 @@ import java.util.Locale;
  */
 final class HtmlPageBuilder {
 
-    private static final String TD_CLOSE = "</td>";
-
     private static final DateTimeFormatter CHART_TIME_FMT =
             DateTimeFormatter.ofPattern("HH:mm:ss");
 
@@ -124,6 +122,19 @@ final class HtmlPageBuilder {
             jTps.add(String.format(Locale.US, "%.2f", b.tps));
             jKb.add(String.format(Locale.US,  "%.2f", b.kbps));
         }
+
+        // Append a phantom end-point at (last bucket start + interval) so Chart.js
+        // extends the x-axis to the true test end time. The null data values ensure
+        // nothing is plotted at this position — it is a label anchor only.
+        long intervalMs = timeBuckets.get(1).epochMs - timeBuckets.get(0).epochMs;
+        long phantomMs  = timeBuckets.get(timeBuckets.size() - 1).epochMs + intervalMs;
+        String phantomLabel = LocalDateTime.ofInstant(
+                Instant.ofEpochMilli(phantomMs), ZoneId.systemDefault()).format(CHART_TIME_FMT);
+        jLabels.add("\"" + phantomLabel + "\"");
+        jAvg.add("null");
+        jErr.add("null");
+        jTps.add("null");
+        jKb.add("null");
 
         String labels = "[" + String.join(",", jLabels) + "]";
         String avgArr = "[" + String.join(",", jAvg) + "]";
@@ -269,7 +280,7 @@ final class HtmlPageBuilder {
         for (int r = 1; r < tableLines.size(); r++) {
             sb.append("<tr>");
             for (String cell : tableLines.get(r)) {
-                sb.append("<td>").append(HtmlReportRenderer.escapeHtml(cell.trim())).append(TD_CLOSE);
+                sb.append("<td>").append(HtmlReportRenderer.escapeHtml(cell.trim())).append(HtmlReportRenderer.TD_CLOSE);
             }
             sb.append("</tr>\n");
         }
@@ -360,19 +371,26 @@ final class HtmlPageBuilder {
                 .append("        label: label, data: data, borderColor: color,\n")
                 .append("        backgroundColor: color.replace('1)', '0.10)'),\n")
                 .append("        borderWidth: 2, pointRadius: 3, pointHoverRadius: 6,\n")
-                .append("        fill: true, tension: 0.25\n")
+                .append("        fill: true, tension: 0.25, spanGaps: false\n")
                 .append("      }]},\n")
                 .append("      options: {\n")
                 .append("        responsive: true, maintainAspectRatio: false,\n")
                 .append("        plugins: {\n")
                 .append("          legend: { display: false },\n")
                 .append("          tooltip: { callbacks: { label: function(ctx) {\n")
+                .append("            if (ctx.parsed.y === null) return null;\n")
                 .append("            return ' ' + ctx.parsed.y.toFixed(2) + ' ' + unit;\n")
                 .append("          }}}\n")
                 .append("        },\n")
                 .append("        scales: {\n")
                 .append("          x: { title: { display: true, text: 'Test Time (HH:mm:ss)', font: { size: 11 } },\n")
-                .append("               ticks: { font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 15 },\n")
+                .append("               ticks: { font: { size: 10 }, maxRotation: 45, autoSkip: true, maxTicksLimit: 12,\n")
+                .append("                 callback: function(val, idx, all) {\n")
+                .append("                   if (idx === 0 || idx === all.length - 1) return this.getLabelForValue(val);\n")
+                .append("                   if (idx % Math.round(all.length / 10) === 0) return this.getLabelForValue(val);\n")
+                .append("                   return undefined;\n")
+                .append("                 }\n")
+                .append("               },\n")
                 .append("               grid: { color: 'rgba(0,0,0,0.04)' } },\n")
                 .append("          y: { beginAtZero: true,\n")
                 .append("               title: { display: true, text: unit, font: { size: 11 } },\n")
