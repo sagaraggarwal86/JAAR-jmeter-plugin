@@ -229,9 +229,22 @@ public class PromptBuilder {
         // and the SLA threshold the AI evaluates share the same numeric cut-off.
         final double userErrorSlaThreshold = parseErrorSlaThreshold(request.errorSlaThresholdPct());
 
-        String json = GSON.toJson(
-                buildSummary(results, percentile, errorTypeSummary, latency,
-                        userErrorSlaThreshold, timeBuckets, request));
+        // Build summary first — needed for both JSON and the plain-text SLA verdict block
+        Map<String, Object> summary = buildSummary(results, percentile, errorTypeSummary,
+                latency, userErrorSlaThreshold, timeBuckets, request);
+        String json = GSON.toJson(summary);
+
+        // Build plain-text SLA verdict block from pre-computed summaries.
+        // Embedding the verdict as labeled plain text — not just as JSON fields —
+        // ensures all models cite the correct worst-transaction values without
+        // needing to look up JSON paths. Models reliably follow labeled text
+        // they see directly in the user message.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> errSla = (Map<String, Object>) summary.get("errorSlaSummary");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> rtSla  = (Map<String, Object>) summary.get("rtSlaSummary");
+        String slaVerdictBlock = buildSlaVerdictBlock(errSla, rtSla);
+
         return """
                 DATA SOURCE: All metrics below reflect the user's currently \
                 configured view — time window, transaction scope, and \
@@ -252,6 +265,8 @@ public class PromptBuilder {
                   Error Rate SLA      : %s
                   Response Time SLA   : %s on %s
 
+                %s
+
                 Global Statistics (JSON):
                 %s""".formatted(
                 orNotProvided(request.scenarioName()),
@@ -265,11 +280,81 @@ public class PromptBuilder {
                 request.errorSlaThresholdPct(),
                 request.rtSlaThresholdMs(),
                 request.rtSlaMetric(),
+                slaVerdictBlock,
                 json);
     }
 
     private static String orNotProvided(String value) {
         return (value == null || value.isBlank()) ? "Not provided" : value.trim();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // SLA verdict plain-text block
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Builds a plain-text SLA verdict block for direct embedding in the user message.
+     *
+     * <p>Embedding the verdict as labeled plain text — in addition to the JSON
+     * summaries — ensures all models cite the correct worst-transaction values
+     * without needing to look up JSON paths. The block is placed immediately
+     * after the SLA Thresholds line in the user message so it is prominent.</p>
+     *
+     * <p>Example output:
+     * <pre>
+     * SLA Verdict (pre-computed — use these exact values in the report):
+     *   Error Rate SLA  : WITHIN  | worst transaction: POST Submit Insurance Claim
+     *                              at 3.88% | threshold: 10.0%
+     *   Response Time SLA : WITHIN | worst transaction: POST Export Report
+     *                              at 450.0 ms P90 | threshold: 2000 ms
+     *   Overall Verdict : PASS
+     * </pre></p>
+     *
+     * @param errSla pre-computed error SLA summary map from {@code errorSlaSummary}
+     * @param rtSla  pre-computed RT SLA summary map from {@code rtSlaSummary}
+     * @return plain-text block string
+     */
+    private static String buildSlaVerdictBlock(
+            Map<String, Object> errSla, Map<String, Object> rtSla) {
+
+        StringBuilder sb = new StringBuilder(
+                "SLA Verdict (pre-computed — use these exact values in the report):\n");
+
+        // ── Error Rate SLA line ───────────────────────────────────────────
+        String errVerdict = String.valueOf(errSla.getOrDefault("verdict", "NOT_CONFIGURED"));
+        if ("NOT_CONFIGURED".equals(errVerdict)) {
+            sb.append("  Error Rate SLA    : Not configured\n");
+        } else {
+            String errWorst    = String.valueOf(errSla.getOrDefault("worstLabel", ""));
+            Object errPct      = errSla.getOrDefault("worstErrorRatePct", "");
+            Object errThresh   = errSla.getOrDefault("thresholdPct", "");
+            sb.append("  Error Rate SLA    : ").append(errVerdict)
+                    .append(" | worst transaction: ").append(errWorst)
+                    .append(" at ").append(errPct).append("%")
+                    .append(" | threshold: ").append(errThresh).append("%\n");
+        }
+
+        // ── RT SLA line ───────────────────────────────────────────────────
+        String rtVerdict = String.valueOf(rtSla.getOrDefault("verdict", "NOT_CONFIGURED"));
+        if ("NOT_CONFIGURED".equals(rtVerdict)) {
+            sb.append("  Response Time SLA : Not configured\n");
+        } else {
+            String rtWorst   = String.valueOf(rtSla.getOrDefault("worstLabel", ""));
+            Object rtObs     = rtSla.getOrDefault("worstObservedMs", "");
+            Object rtThresh  = rtSla.getOrDefault("thresholdMs", "");
+            String rtMetric  = String.valueOf(rtSla.getOrDefault("metric", "pnnMs"));
+            String metricLabel = "avgMs".equals(rtMetric) ? "Avg" : "Pnn";
+            sb.append("  Response Time SLA : ").append(rtVerdict)
+                    .append(" | worst transaction: ").append(rtWorst)
+                    .append(" at ").append(rtObs).append(" ms ").append(metricLabel)
+                    .append(" | threshold: ").append(rtThresh).append(" ms\n");
+        }
+
+        // ── Overall verdict line ─────────────────────────────────────────
+        boolean anyBreach = "BREACH".equals(errVerdict) || "BREACH".equals(rtVerdict);
+        sb.append("  Overall Verdict   : ").append(anyBreach ? "FAIL" : "PASS");
+
+        return sb.toString();
     }
 
     // ─────────────────────────────────────────────────────────────

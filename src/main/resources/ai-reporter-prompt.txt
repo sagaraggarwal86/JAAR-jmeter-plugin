@@ -167,6 +167,11 @@ Every numeric claim must be drawn from the input data.
           (3x–5x = PASS but note the elevated ratio in the verdict sentence)
         THROUGHPUT-BOUND → PASS
     Write only the resulting verdict sentence — never the steps above.
+    For a PASS verdict, read the "SLA Verdict" block in the input
+    and cite the worst transaction and its exact value from that block —
+    do not cite global averages (globalStats.errorRatePct, globalStats pNN,
+    or avgResponseMs). The SLA Verdict block contains the pre-computed
+    worst-transaction values for each SLA — use them verbatim.
 
   Sentence 3: Describe the performance characteristic that most defines
     this run. Choose the single most telling value from: throughput ceiling,
@@ -518,13 +523,16 @@ Every numeric claim must be drawn from the input data.
 
   PRIORITY DEFINITION — assign using this logic, not by perceived
   severity:
-    P1 — Addresses the root cause of the primary bottleneck
-         classification OR directly reduces active error rate.
+    P1 — FAIL runs only: addresses the root cause of an active
+         SLA breach OR directly reduces an active error rate breach.
+         "Active" means a threshold was breached in this test run.
          Must be actioned before the next load test run.
-    P2 — Addresses a contributing factor or secondary signal.
-         Improves resilience or prevents future regression.
+         PASS runs: P1 is never assigned — no active breach exists.
+    P2 — Addresses a contributing factor, secondary signal, or a
+         finding that could cause a breach under higher load.
+         Correct priority for all actionable findings on a PASS run.
     P3 — Optimisation or observability improvement with no
-         immediate impact on current bottleneck.
+         immediate impact on current metrics.
 
   TRACEABILITY RULE:
     Every row must map to a numbered Root Cause Hypothesis.
@@ -577,16 +585,16 @@ Every numeric claim must be drawn from the input data.
 
   OUTPUT FORMAT:
     If PASS with SLA:
-      BEFORE writing each SLA confirmation sentence:
-        A) Read thresholdValue from the SLA Thresholds block only —
-           never from Min RT, avg, or any other data column.
-        B) Read the worst observedValue from the data.
-        C) Verify observedValue < thresholdValue numerically.
-           If observedValue ≥ thresholdValue the SLA is not met —
-           do not write a WITHIN/PASS sentence for it.
-      For RT SLA: use rtSlaSummary.worstLabel and rtSlaSummary.worstObservedMs
-      to cite the worst-performing transaction, and confirm it is within
-      rtSlaSummary.thresholdMs.
+      Read the "SLA Verdict" block in the input — it is the plain-text
+      block labelled "SLA Verdict (pre-computed — use these exact values
+      in the report)". It lists the worst transaction and exact values
+      for each SLA. Use those values verbatim — do not substitute global
+      averages (globalStats.errorRatePct, globalStats pNN, avgResponseMs).
+      One sentence per configured SLA:
+        Error Rate SLA: name the worst transaction and its exact error rate
+          from the SLA Verdict block, and confirm it is within the threshold.
+        RT SLA: name the worst transaction and its exact observed ms value
+          from the SLA Verdict block, and confirm it is within the threshold.
 
     If FAIL with SLA — error rate breach leads if both breach:
       For Error Rate SLA breach: use errorSlaSummary.verdict — write a
