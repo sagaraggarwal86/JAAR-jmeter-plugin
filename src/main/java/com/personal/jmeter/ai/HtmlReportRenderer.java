@@ -48,7 +48,7 @@ public class HtmlReportRenderer {
     };
 
     private static final Logger log = LoggerFactory.getLogger(HtmlReportRenderer.class);
-    private static final String TD_CLOSE = "</td>";
+    static final String TD_CLOSE = "</td>";
 
     /**
      * Minimum free disk space required before writing a report.

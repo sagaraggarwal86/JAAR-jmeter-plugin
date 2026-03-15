@@ -148,7 +148,7 @@ public class AiReportCoordinator {
     }
 
     private String renderReport(ReportContext ctx, String markdown) throws IOException {
-        String suggestedName = deriveSuggestedFileName(ctx.config.scenarioName);
+        String suggestedName = deriveSuggestedFileName(ctx.providerDisplayName);
         File startDir = Path.of(ctx.jtlPath).toAbsolutePath().getParent() != null
                 ? Path.of(ctx.jtlPath).toAbsolutePath().getParent().toFile()
                 : new File(System.getProperty("user.dir"));
@@ -205,16 +205,21 @@ public class AiReportCoordinator {
     /**
      * Builds a suggested filename for the AI report (no directory component).
      *
-     * @param scenarioName test plan name (may be null/blank)
-     * @return suggested filename, e.g. {@code AI_Generated_Report_Checkout_20260311_143022.html}
+     * <p>Format: {@code SPARK_<AIName>_Report_<yyyyMMdd_HHmmss>.html}<br>
+     * Example: {@code SPARK_Groq_Report_20260315_143022.html}</p>
+     *
+     * @param providerDisplayName display name of the AI provider (e.g. "Groq (Free)")
+     * @return suggested filename
      */
-    private static String deriveSuggestedFileName(String scenarioName) {
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        String planPart  = sanitizeSegment(scenarioName);
-        StringBuilder name = new StringBuilder("AI_Generated_Report");
-        if (!planPart.isEmpty()) name.append('_').append(planPart);
-        name.append('_').append(timestamp).append(".html");
-        return name.toString();
+    private static String deriveSuggestedFileName(String providerDisplayName) {
+        String timestamp   = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        // Strip parenthetical tier suffix — "Groq (Free)" → "Groq", "OpenAI (Paid)" → "OpenAI"
+        String baseName    = (providerDisplayName != null)
+                ? providerDisplayName.replaceAll("\\s*\\(.*\\)\\s*$", "").trim()
+                : "";
+        String providerPart = sanitizeSegment(baseName);
+        if (providerPart.isEmpty()) providerPart = "AI";
+        return "SPARK_" + providerPart + "_Report_" + timestamp + ".html";
     }
 
     private static String sanitizeSegment(String raw) {

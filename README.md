@@ -1,4 +1,4 @@
-# Configurable Aggregate Report — JMeter Plugin
+# SPARK — Smart Performance Analyser & Report Kit
 
 A file-based Apache JMeter listener plugin for post-test JTL analysis. Load a JTL file and get
 a filterable aggregate table, CSV export, and an AI-generated HTML performance report — with zero
@@ -63,19 +63,19 @@ runtime overhead.
 ### From Releases (Recommended)
 
 1. Download the latest JAR from the
-   [GitHub Releases](https://github.com/sagaraggarwal86/Configurable_Aggregate_Report/releases) page.
+   [GitHub Releases](https://github.com/sagaraggarwal86/spark-jmeter-plugin/releases) page.
 
 2. Copy it to your JMeter `lib/ext/` directory:
    ```
-   <JMETER_HOME>/lib/ext/Configurable_Aggregate_Report-<version>.jar
+   <JMETER_HOME>/lib/ext/spark-jmeter-plugin-<version>.jar
    ```
 
 3. Restart JMeter.
 
 4. *(Optional — CLI mode)* Copy the wrapper scripts to `<JMETER_HOME>/bin/`:
    ```
-   <JMETER_HOME>/bin/car-cli-report.bat     (Windows)
-   <JMETER_HOME>/bin/car-cli-report.sh      (macOS / Linux)
+   <JMETER_HOME>/bin/spark-cli-report.bat     (Windows)
+   <JMETER_HOME>/bin/spark-cli-report.sh      (macOS / Linux)
    ```
    The scripts are in the `src/main/scripts/` directory of the source repository.
 
@@ -99,22 +99,22 @@ runtime overhead.
 **Prerequisites:** Java 17+, Maven 3.6+
 
 ```bash
-git clone https://github.com/sagaraggarwal86/Configurable_Aggregate_Report.git
-cd Configurable_Aggregate_Report
+git clone https://github.com/sagaraggarwal86/spark-jmeter-plugin.git
+cd spark-jmeter-plugin
 mvn clean verify
-cp target/Configurable_Aggregate_Report-*.jar $JMETER_HOME/lib/ext/
+cp target/spark-jmeter-plugin-*.jar $JMETER_HOME/lib/ext/
 ```
 
 ---
 
 ## Quick Start
 
-1. In JMeter: **Test Plan → Add → Listener → Configurable Aggregate Report**
+1. In JMeter: **Test Plan → Add → Listener → SPARK — AI Performance Reporter**
 2. Click **Browse** and select a JTL file
 3. The metrics table populates immediately
 4. Adjust filters as needed — the table updates without re-browsing
 
-<img src="docs/img.jpg" alt="Configurable Aggregate Report — plugin UI" width="500">
+<img src="docs/img.jpg" alt="SPARK — AI Performance Reporter plugin UI" width="500">
 
 ---
 
@@ -396,9 +396,9 @@ Generate an AI performance report from the command line — no JMeter GUI requir
 Copy the wrapper scripts to your JMeter `bin/` directory:
 
 ```
-<JMETER_HOME>/bin/car-cli-report.bat    ← Windows
-<JMETER_HOME>/bin/car-cli-report.sh     ← macOS / Linux
-<JMETER_HOME>/lib/ext/Configurable_Aggregate_Report-<version>.jar  ← already installed
+<JMETER_HOME>/bin/spark-cli-report.bat    ← Windows
+<JMETER_HOME>/bin/spark-cli-report.sh     ← macOS / Linux
+<JMETER_HOME>/lib/ext/spark-jmeter-plugin-<version>.jar  ← already installed
 ```
 
 The scripts auto-detect the JMeter installation from their own location — no environment
@@ -408,12 +408,12 @@ variables needed.
 
 **Windows:**
 ```cmd
-car-cli-report.bat -i results.jtl --provider mistral --config ai-reporter.properties
+spark-cli-report.bat -i results.jtl --provider mistral --config ai-reporter.properties
 ```
 
 **macOS / Linux:**
 ```bash
-./car-cli-report.sh -i results.jtl --provider mistral --config ai-reporter.properties
+./spark-cli-report.sh -i results.jtl --provider mistral --config ai-reporter.properties
 ```
 
 ### All Options
@@ -472,7 +472,7 @@ etc.) are written to `stderr` so that `stdout` stays clean for scripting. Captur
 get the report path and verdict:
 
 ```bash
-OUTPUT=$(./car-cli-report.sh -i results.jtl --provider mistral --config ai-reporter.properties 2>/dev/null)
+OUTPUT=$(./spark-cli-report.sh -i results.jtl --provider mistral --config ai-reporter.properties 2>/dev/null)
 REPORT_PATH=$(echo "$OUTPUT" | head -1)
 VERDICT=$(echo "$OUTPUT" | tail -1)
 ```
@@ -492,7 +492,7 @@ performs a best-effort analysis without a configured threshold reference.
 ### Example — CI/CD Pipeline
 
 ```bash
-./car-cli-report.sh \
+./spark-cli-report.sh \
   -i results.jtl -o report.html \
   --provider mistral --config /etc/jmeter/ai-reporter.properties \
   --start-offset 10 --end-offset 300 --percentile 95 \
@@ -618,7 +618,7 @@ ollama list
 ## Contributing
 
 Bug reports and pull requests are welcome via
-[GitHub Issues](https://github.com/sagaraggarwal86/Configurable_Aggregate_Report/issues).
+[GitHub Issues](https://github.com/sagaraggarwal86/spark-jmeter-plugin/issues).
 
 Before submitting a pull request:
 

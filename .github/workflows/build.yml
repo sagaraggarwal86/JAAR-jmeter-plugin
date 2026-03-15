@@ -25,8 +25,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: matrix.os == 'windows-latest'
         with:
-          name: Configurable_Aggregate_Report
+          name: spark-jmeter-plugin
           path: |
-            target/Configurable_Aggregate_Report-*.jar
-            src/main/scripts/car-cli-report.bat
-            src/main/scripts/car-cli-report.sh
+            target/spark-jmeter-plugin-*.jar
+            src/main/scripts/spark-cli-report.bat
+            src/main/scripts/spark-cli-report.sh
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: coverage-report
+          path: target/site/jacoco/

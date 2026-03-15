@@ -20,7 +20,7 @@ import java.net.URI;
 import java.util.Enumeration;
 
 /**
- * JMeter listener plugin — Configurable Aggregate Report.
+ * JMeter listener plugin — SPARK (Smart Performance Analyser &amp; Report Kit).
  *
  * <p>This class handles JMeter-specific integration only:
  * lifecycle callbacks ({@code configure}, {@code modifyTestElement}, {@code clearGui}),
@@ -81,8 +81,7 @@ public class ListenerGUI extends AbstractVisualizer {
             @Override
             public void mouseClicked(MouseEvent e) {
                 try {
-                    Desktop.getDesktop().browse(new URI(
-                            "https://github.com/sagaraggarwal86/Configurable_Aggregate_Report"));
+                    Desktop.getDesktop().browse(new URI(ListenerCollector.HELP_URL));
                 } catch (Exception ex) {
                     log.warn("helpLink: could not open browser. reason={}", ex.getMessage());
                 }
@@ -129,12 +128,12 @@ public class ListenerGUI extends AbstractVisualizer {
 
     @Override
     public String getLabelResource() {
-        return "configurable_aggregate_report";
+        return "spark_ai_performance_reporter";
     }
 
     @Override
     public String getStaticLabel() {
-        return "Configurable Aggregate Report";
+        return ListenerCollector.PLUGIN_NAME;
     }
 
     @Override

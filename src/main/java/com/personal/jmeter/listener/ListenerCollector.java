@@ -3,7 +3,7 @@ package com.personal.jmeter.listener;
 import org.apache.jmeter.reporters.ResultCollector;
 
 /**
- * Backend collector for the Configurable Aggregate Report plugin.
+ * Backend collector for the SPARK — Smart Performance Analyser &amp; Report Kit plugin.
  *
  * <p>Persists all UI configuration properties into the .jmx file so that
  * the panel state is fully restored on tree navigation.
@@ -13,6 +13,14 @@ public class ListenerCollector extends ResultCollector {
 
     @java.io.Serial
     private static final long serialVersionUID = 1L;
+
+    // ── Plugin identity ───────────────────────────────────────────
+    /** Display name shown in the JMeter listener menu. */
+    public static final String PLUGIN_NAME = "SPARK — AI Performance Reporter";
+
+    /** GitHub repository URL — single source of truth for the help link. */
+    public static final String HELP_URL =
+            "https://github.com/sagaraggarwal86/spark-jmeter-plugin";
 
     // ── Filter fields ────────────────────────────────────────────
     /** JMeter property key for the start-offset filter (seconds). */
