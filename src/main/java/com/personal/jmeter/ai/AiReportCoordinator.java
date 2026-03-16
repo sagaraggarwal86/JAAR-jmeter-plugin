@@ -115,10 +115,20 @@ public class AiReportCoordinator {
             setProgress(progressLabel, "Calling " + ctx.providerDisplayName + " (this may take ~30 seconds)...");
             String markdown = aiService.generateReport(prompt);
 
+            // Normalise section headings — inject any structurally missing headings
+            // (e.g. Cerebras consistently omits ## Executive Summary).
+            // Must run before stripVerdictLine so heading injection does not
+            // interfere with token stripping.
+            markdown = MarkdownSectionNormaliser.normalise(markdown);
+
             // Strip the machine verdict token (e.g. "VERDICT:FAIL") before rendering.
             // This token is a CLI exit-code signal and must never appear as visible
             // text in the HTML report. In CLI mode CliReportPipeline does this via
             // MarkdownUtils; here we mirror the same step for the UI path.
+            String verdict       = MarkdownUtils.extractVerdict(markdown);
+            String verdictSource = MarkdownUtils.verdictSource(markdown);
+            log.info("executeReport: verdict={} source={} provider={}",
+                    verdict, verdictSource, ctx.providerConfig.providerKey);
             String strippedMarkdown = MarkdownUtils.stripVerdictLine(markdown);
 
             setProgress(progressLabel, "Rendering HTML report...");
@@ -142,7 +152,8 @@ public class AiReportCoordinator {
         } catch (RuntimeException ex) {
             log.error("executeReport: unexpected error during report generation. reason={}", ex.getMessage(), ex);
             SwingUtilities.invokeLater(() -> onFailure(
-                    new IOException("Unexpected error: " + ex.getMessage(), ex),
+                    new IOException("Unexpected error during report generation. "
+                            + "Check the log for details. reason=" + ex.getMessage(), ex),
                     progressDialog, triggerBtn));
         }
     }

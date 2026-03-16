@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.github.sagaraggarwal86</groupId>
     <artifactId>spark-jmeter-plugin</artifactId>
-    <version>4.1.0</version>
+    <version>4.2.0</version>
     <packaging>jar</packaging>
     <name>SPARK — Smart Performance Analyser &amp; Report Kit</name>
     <description>SPARK is an AI-powered JMeter listener plugin that analyses load test results and generates intelligent performance reports with PASS/FAIL verdicts.</description>

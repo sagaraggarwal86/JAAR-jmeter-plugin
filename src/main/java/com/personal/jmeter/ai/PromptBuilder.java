@@ -242,7 +242,7 @@ public class PromptBuilder {
         Map<String, Object> errSla = (Map<String, Object>) summary.get("errorSlaSummary");
         @SuppressWarnings("unchecked")
         Map<String, Object> rtSla  = (Map<String, Object>) summary.get("rtSlaSummary");
-        String slaVerdictBlock = buildSlaVerdictBlock(errSla, rtSla);
+        String slaVerdictBlock = buildSlaVerdictBlock(errSla, rtSla, percentile);
 
         return """
                 DATA SOURCE: All metrics below reflect the user's currently \
@@ -314,7 +314,7 @@ public class PromptBuilder {
      * @return plain-text block string
      */
     private static String buildSlaVerdictBlock(
-            Map<String, Object> errSla, Map<String, Object> rtSla) {
+            Map<String, Object> errSla, Map<String, Object> rtSla, int percentile) {
 
         StringBuilder sb = new StringBuilder(
                 "SLA Verdict (pre-computed — use these exact values in the report):\n");
@@ -342,7 +342,10 @@ public class PromptBuilder {
             Object rtObs     = rtSla.getOrDefault("worstObservedMs", "");
             Object rtThresh  = rtSla.getOrDefault("thresholdMs", "");
             String rtMetric  = String.valueOf(rtSla.getOrDefault("metric", "pnnMs"));
-            String metricLabel = "avgMs".equals(rtMetric) ? "Avg" : "Pnn";
+            // Derive human-readable metric label from the actual configured percentile
+            // rather than using the generic "Pnn" placeholder.
+            // "avgMs" → "Avg";  "pnnMs" → "P90", "P95", "P99" etc.
+            String metricLabel = "avgMs".equals(rtMetric) ? "Avg" : "P" + percentile;
             sb.append("  Response Time SLA : ").append(rtVerdict)
                     .append(" | worst transaction: ").append(rtWorst)
                     .append(" at ").append(rtObs).append(" ms ").append(metricLabel)

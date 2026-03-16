@@ -438,6 +438,7 @@ public final class AiProviderRegistry {
         String url = config.chatCompletionsUrl();
         String body = buildPingBody(config);
         log.debug("executePing: pinging provider={} url={}", config.providerKey, url);
+        long pingStart = System.currentTimeMillis();
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -451,12 +452,16 @@ public final class AiProviderRegistry {
             HttpResponse<String> response =
                     SharedHttpClient.get().send(request, HttpResponse.BodyHandlers.ofString());
             int status = response.statusCode();
-            log.debug("executePing: provider={} status={}", config.providerKey, status);
+            long elapsedMs = System.currentTimeMillis() - pingStart;
 
             if (status >= 200 && status < 300) {
                 PING_CACHE.put(cacheKey(config), Boolean.TRUE);
+                log.info("executePing: provider={} status={} elapsed={}ms — OK",
+                        config.providerKey, status, elapsedMs);
                 return null;
             }
+            log.warn("executePing: provider={} status={} elapsed={}ms — FAIL",
+                    config.providerKey, status, elapsedMs);
             PING_CACHE.remove(cacheKey(config));
             return buildPingErrorMessage(config, status, response.body());
 
