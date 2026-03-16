@@ -113,9 +113,10 @@ final class CliReportPipeline {
         progress("AI response received (%d characters).", markdown.length());
 
         // Step 8 — Extract verdict and strip machine verdict line before rendering
-        String verdict          = MarkdownUtils.extractVerdict(markdown);
+        String verdict       = MarkdownUtils.extractVerdict(markdown);
+        String verdictSource = MarkdownUtils.verdictSource(markdown);
         String strippedMarkdown = MarkdownUtils.stripVerdictLine(markdown);
-        progress("Verdict: %s", verdict);
+        progress("Verdict: %s (source: %s)", verdict, verdictSource);
 
         // Step 9 — Render HTML
         progress("Rendering HTML report...");

@@ -7,16 +7,26 @@ package com.personal.jmeter.ai;
  * ({@code CliReportPipeline}) and the Swing UI pipeline ({@code AiReportCoordinator})
  * share a single, tested implementation.</p>
  *
- * <p>The machine verdict token is a bare line emitted by the AI at the very end
- * of its response:
- * <pre>
- *   VERDICT:PASS
- *   VERDICT:FAIL
- * </pre>
- * It is never meant to be visible in the rendered HTML report. Before rendering,
- * callers must call {@link #stripVerdictLine(String)} to remove it. The CLI
- * additionally calls {@link #extractVerdict(String)} to map the token to an
- * exit code before stripping.</p>
+ * <h3>Two-token truncation-resilience protocol</h3>
+ * <p>The AI emits two machine-readable verdict tokens:</p>
+ * <ol>
+ *   <li>{@code BRIEF_VERDICT:PASS} / {@code BRIEF_VERDICT:FAIL} — emitted
+ *       immediately after the Executive Summary section. Acts as a truncation
+ *       anchor: if the model is cut off before completing the Verdict section,
+ *       this token is still present and can be detected.</li>
+ *   <li>{@code VERDICT:PASS} / {@code VERDICT:FAIL} — emitted as the absolute
+ *       last line of the Verdict section. Canonical token when the response is
+ *       complete.</li>
+ * </ol>
+ *
+ * <p>{@link #extractVerdict(String)} scans for {@code BRIEF_VERDICT:} from the
+ * top of the document first (resilient path), then falls back to scanning for
+ * {@code VERDICT:} from the bottom (canonical path). This means a complete
+ * response uses the canonical token, and a truncated response uses the anchor.</p>
+ *
+ * <p>Neither token is ever visible in the rendered HTML report.
+ * {@link #stripVerdictLine(String)} removes all lines starting with either
+ * {@code VERDICT:} or {@code BRIEF_VERDICT:} before rendering.</p>
  */
 public final class MarkdownUtils {
 
@@ -27,15 +37,21 @@ public final class MarkdownUtils {
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Scans the last non-blank line of the AI markdown for a machine verdict token.
+     * Extracts the machine verdict from AI-generated markdown using a two-pass
+     * truncation-resilient strategy.
      *
-     * <p>Returns {@code "UNDECISIVE"} when:</p>
-     * <ul>
-     *   <li>the markdown is null or blank,</li>
-     *   <li>the last non-blank line is not a {@code VERDICT:} token (e.g. the AI
-     *       omitted it or the response was truncated), or</li>
-     *   <li>the token is not one of the two recognised values.</li>
-     * </ul>
+     * <h4>Pass 1 — canonical (bottom scan)</h4>
+     * <p>Scans the last non-blank line for {@code VERDICT:PASS} or
+     * {@code VERDICT:FAIL}. This is the primary signal for a complete response.</p>
+     *
+     * <h4>Pass 2 — resilient fallback (top scan)</h4>
+     * <p>If Pass 1 finds no {@code VERDICT:} token (i.e. the response was
+     * truncated before the Verdict section), scans all lines from the top for
+     * the first {@code BRIEF_VERDICT:PASS} or {@code BRIEF_VERDICT:FAIL} token.
+     * This token is emitted immediately after the Executive Summary, so it
+     * survives truncation in all but the most extreme cases.</p>
+     *
+     * <p>Returns {@code "UNDECISIVE"} when neither token is found.</p>
      *
      * @param markdown raw AI-generated markdown; may be null
      * @return {@code "PASS"}, {@code "FAIL"}, or {@code "UNDECISIVE"}
@@ -43,14 +59,76 @@ public final class MarkdownUtils {
     public static String extractVerdict(String markdown) {
         if (markdown == null || markdown.isBlank()) return "UNDECISIVE";
         String[] lines = markdown.split("\n");
+
+        // Pass 1 — canonical: scan from the bottom for VERDICT:
+        // Accepts the token on its own line (equals) OR inline at the end of
+        // the last sentence (endsWith) — some models append it to the paragraph.
         for (int i = lines.length - 1; i >= 0; i--) {
-            String line = lines[i].trim();
+            String line = normaliseTokenLine(lines[i]);
             if (!line.isEmpty()) {
-                if (line.equals("VERDICT:PASS")) return "PASS";
-                if (line.equals("VERDICT:FAIL")) return "FAIL";
-                return "UNDECISIVE";
+                if (line.equals("VERDICT:PASS") || line.endsWith("VERDICT:PASS")) return "PASS";
+                if (line.equals("VERDICT:FAIL") || line.endsWith("VERDICT:FAIL")) return "FAIL";
+                break; // last non-blank line has no VERDICT: token — stop
             }
         }
+
+        // Pass 2 — resilient fallback: scan from the top for BRIEF_VERDICT:
+        for (String raw : lines) {
+            String line = normaliseTokenLine(raw);
+            if (line.equals("BRIEF_VERDICT:PASS") || line.endsWith("BRIEF_VERDICT:PASS")) return "PASS";
+            if (line.equals("BRIEF_VERDICT:FAIL") || line.endsWith("BRIEF_VERDICT:FAIL")) return "FAIL";
+        }
+
+        return "UNDECISIVE";
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Verdict source detection
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Returns the resolution path used by {@link #extractVerdict(String)}.
+     *
+     * <ul>
+     *   <li>{@code "CANONICAL"} — {@code VERDICT:} token found as the last
+     *       non-blank line; the AI response completed fully.</li>
+     *   <li>{@code "FALLBACK"} — {@code VERDICT:} absent; {@code BRIEF_VERDICT:}
+     *       anchor token found early in the document; the response was truncated
+     *       before the Verdict section but the anchor survived.</li>
+     *   <li>{@code "UNDECISIVE"} — neither token present; the response was
+     *       truncated before the {@code BRIEF_VERDICT:} anchor or the AI omitted
+     *       both tokens.</li>
+     * </ul>
+     *
+     * <p>Callers should log this value at INFO level on every run so that
+     * truncation events are visible in the log without requiring DEBUG output.</p>
+     *
+     * @param markdown raw AI-generated markdown; may be null
+     * @return {@code "CANONICAL"}, {@code "FALLBACK"}, or {@code "UNDECISIVE"}
+     */
+    public static String verdictSource(String markdown) {
+        if (markdown == null || markdown.isBlank()) return "UNDECISIVE";
+        String[] lines = markdown.split("\n");
+
+        // Pass 1 — canonical: VERDICT: at end (own line or inline at end of sentence)
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String line = normaliseTokenLine(lines[i]);
+            if (!line.isEmpty()) {
+                if (line.equals("VERDICT:PASS") || line.equals("VERDICT:FAIL")
+                        || line.endsWith("VERDICT:PASS") || line.endsWith("VERDICT:FAIL"))
+                    return "CANONICAL";
+                break;
+            }
+        }
+
+        // Pass 2 — fallback: BRIEF_VERDICT: anywhere
+        for (String raw : lines) {
+            String line = normaliseTokenLine(raw);
+            if (line.equals("BRIEF_VERDICT:PASS") || line.equals("BRIEF_VERDICT:FAIL")
+                    || line.endsWith("BRIEF_VERDICT:PASS") || line.endsWith("BRIEF_VERDICT:FAIL"))
+                return "FALLBACK";
+        }
+
         return "UNDECISIVE";
     }
 
@@ -59,34 +137,87 @@ public final class MarkdownUtils {
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Returns the markdown with the machine verdict line removed so it is never
-     * rendered as visible HTML.
+     * Returns the markdown with all machine verdict lines removed so neither
+     * token is ever rendered as visible HTML.
      *
-     * <p>If no {@code VERDICT:} line is present — e.g. the AI was truncated before
-     * emitting it — the original markdown is returned unchanged; the method never
-     * throws.</p>
+     * <p>Strips every line whose trimmed content starts with {@code VERDICT:}
+     * or {@code BRIEF_VERDICT:}. Both tokens must be stripped because
+     * {@code BRIEF_VERDICT:} appears mid-document (after Executive Summary)
+     * and {@code VERDICT:} appears at the end. Trailing whitespace is trimmed
+     * from the result.</p>
+     *
+     * <p>If neither token is present — e.g. the AI omitted both — the original
+     * markdown is returned unchanged; the method never throws.</p>
      *
      * @param markdown raw AI-generated markdown; may be null
-     * @return markdown with the trailing {@code VERDICT:} line stripped and
-     *         trailing whitespace trimmed; the original string if no verdict line
-     *         is found; {@code markdown} itself if null or blank
+     * @return markdown with all verdict token lines removed and trailing
+     *         whitespace trimmed; {@code markdown} itself if null or blank
      */
     public static String stripVerdictLine(String markdown) {
         if (markdown == null || markdown.isBlank()) return markdown;
         String[] lines = markdown.split("\n", -1);
-        for (int i = lines.length - 1; i >= 0; i--) {
-            String line = lines[i].trim();
-            if (!line.isEmpty()) {
-                if (line.startsWith("VERDICT:")) {
-                    StringBuilder sb = new StringBuilder();
-                    for (int j = 0; j < i; j++) {
-                        sb.append(lines[j]).append("\n");
+        boolean stripped = false;
+        StringBuilder sb = new StringBuilder();
+        for (String raw : lines) {
+            String normalised = normaliseTokenLine(raw);
+            if (normalised.equals("VERDICT:PASS") || normalised.equals("VERDICT:FAIL")
+                    || normalised.equals("BRIEF_VERDICT:PASS") || normalised.equals("BRIEF_VERDICT:FAIL")) {
+                // Token is on its own line — omit the entire line
+                stripped = true;
+            } else if (normalised.startsWith("VERDICT:") || normalised.startsWith("BRIEF_VERDICT:")) {
+                // Token is a standalone line starting with the prefix — omit
+                stripped = true;
+            } else {
+                // Check for inline token at end of sentence — strip just the token suffix
+                String stripped_line = raw;
+                for (String token : new String[]{"VERDICT:PASS","VERDICT:FAIL","BRIEF_VERDICT:PASS","BRIEF_VERDICT:FAIL"}) {
+                    String norm = normalised;
+                    if (norm.endsWith(token)) {
+                        // Remove the token and any preceding space/punctuation from the raw line
+                        int idx = raw.lastIndexOf(token);
+                        if (idx > 0) {
+                            stripped_line = raw.substring(0, idx).stripTrailing();
+                            stripped = true;
+                        }
+                        break;
                     }
-                    return sb.toString().stripTrailing();
                 }
-                break;
+                sb.append(stripped_line).append("\n");
             }
         }
-        return markdown;
+        return stripped ? sb.toString().stripTrailing() : markdown;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Private helpers
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Trims whitespace and strips markdown emphasis markers ({@code *}, {@code _},
+     * {@code `}) from both ends of a line before token comparison.
+     *
+     * <p>Some models wrap the machine verdict token in bold or italic markers,
+     * e.g. {@code **VERDICT:FAIL**} or {@code *BRIEF_VERDICT:PASS*}. This helper
+     * normalises such lines so that the token-matching logic in
+     * {@link #extractVerdict}, {@link #verdictSource}, and
+     * {@link #stripVerdictLine} correctly recognises them regardless of
+     * formatting decoration.</p>
+     *
+     * @param raw a single raw line from the AI markdown
+     * @return the line with leading/trailing whitespace and emphasis markers removed
+     */
+    private static String normaliseTokenLine(String raw) {
+        if (raw == null) return "";
+        // Strip whitespace first, then markdown emphasis characters from both ends
+        String s = raw.trim();
+        int start = 0;
+        int end   = s.length();
+        while (start < end && isEmphasisChar(s.charAt(start)))  start++;
+        while (end   > start && isEmphasisChar(s.charAt(end - 1))) end--;
+        return s.substring(start, end);
+    }
+
+    private static boolean isEmphasisChar(char c) {
+        return c == '*' || c == '_' || c == '`';
     }
 }

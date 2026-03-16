@@ -12,7 +12,6 @@ runtime overhead.
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
-- [UI Layout](#ui-layout)
 - [Table Columns](#table-columns)
 - [Filter Settings](#filter-settings)
 - [SLA Thresholds](#sla-thresholds)
@@ -42,7 +41,7 @@ runtime overhead.
 | 🚨 **SLA Thresholds**          | Set Error % and Response Time thresholds — breaching cells are highlighted in red                 |
 | 💾 **CSV Export**              | Save all visible columns to a CSV file with one click                                             |
 | 🤖 **AI Performance Report**   | Generate a styled HTML report with deep-dive analysis, powered by any OpenAI-compatible provider  |
-| 📊 **Chart Interval**          | Configure the time-bucket interval for performance charts (default: 30 seconds, or set custom)    |
+| 📊 **Chart Interval**          | Configure the time-bucket interval for performance charts (default: auto, or set custom)          |
 | 🚫 **No Live Metrics**         | Designed for post-test JTL analysis — no runtime overhead                                        |
 
 ---
@@ -118,29 +117,6 @@ cp target/spark-jmeter-plugin-*.jar $JMETER_HOME/lib/ext/
 
 ---
 
-## UI Layout
-
-```
-┌─ Name / Comments ──────────────────────────────────────────────────────┐
-├─ Write results to file / Read from file ───────────────────────────────┤
-│   Filename [________________________________]  [Browse...]              │
-├─ Filter Settings ──────────────────────────────────────────────────────┤
-│   Start Offset (s)  │  End Offset (s)  │  Percentile (%)               │
-│   [Select Columns ▼]   Search: [______________]  [✓ RegEx]             │
-├─ Test Time Info ──────────────────────┬─ SLA Thresholds ───────────────┤
-│   Start    End    Duration            │  Error %  Response Time  (ms)   │
-├─ Results Table (sortable) ─────────────────────────────────────────────┤
-│   Transaction Name  │  Count  │  Passed  │  Failed  │  Avg(ms)  │ ...  │
-│   HTTP Request      │   19    │    0     │    19    │   448     │ ...  │
-│   TOTAL             │   19    │    0     │    19    │   448     │ ...  │
-├────────────────────────────────────────────────────────────────────────┤
-│   [Save Table Data]  [▼ Provider]  [Generate AI Report]               │
-│                                    Chart Interval (s, 0=auto): [0]     │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
 ## Table Columns
 
 | Column               | Description                                    |
@@ -201,41 +177,20 @@ Filter the results table by typing in the **Search** field. Only matching transa
 
 ### Test Time Info
 
-Displayed automatically after loading a JTL file.
-
-| Field               | Description                                                |
-|---------------------|------------------------------------------------------------|
-| **Start Date/Time** | Timestamp of the first included sample (local timezone)    |
-| **End Date/Time**   | Timestamp when the last included sample completed          |
-| **Duration**        | Wall-clock time from first sample start to last sample end |
-
-> **Note:** Duration may be slightly longer than `End Offset − Start Offset` because it includes
-> the response time of the last sample within the window.
+Start Date/Time, End Date/Time, and Duration are displayed automatically after loading a JTL file, based on the first and last included samples within the active offset window.
 
 ### Chart Interval
 
 The **Chart Interval (s, 0=auto)** field controls the time-bucket width used for performance
 charts in the AI report.
 
-| Value | Behaviour                                           |
-|-------|-----------------------------------------------------|
-| `0`   | Auto — uses the default 30-second bucket interval   |
-| `10`  | Each chart data point represents a 10-second window |
-| `60`  | Each chart data point represents a 1-minute window  |
+| Value | Behaviour                                                                                        |
+|-------|--------------------------------------------------------------------------------------------------|
+| `0`   | Auto — dynamically selects an interval based on test duration, targeting ~120 chart data points. A 3-hour test uses 2-minute buckets; a 30-minute test uses 15-second buckets. |
+| `10`  | Each chart data point represents a 10-second window                                              |
+| `60`  | Each chart data point represents a 1-minute window                                               |
 
 Valid range: 0–3600 seconds.
-
-### Sub-Result Filtering
-
-The plugin automatically excludes sub-results from aggregation — only parent samples appear in
-the table. This matches the behaviour of JMeter's built-in Aggregate Report.
-
-Sub-results are detected in two ways:
-
-- **Transaction Controller children** — child HTTP samples written immediately after a
-  Transaction Controller row with matching elapsed time
-- **Numbered suffixes** — labels such as `HTTP Request-1`, `HTTP Request-2` where the parent
-  label `HTTP Request` also exists in the JTL file
 
 ---
 
@@ -284,25 +239,46 @@ Cerebras (free), OpenAI (paid), Claude (paid), Ollama (local / free) — or any 
 | Transaction Metrics Table | Full per-transaction breakdown                                 |
 | Performance Charts        | Response time, error rate, throughput, and bandwidth over time |
 
-### Truncation Detection
+### Truncation Detection and Missing Sections
 
-If the AI provider returns a response that was cut short by the token limit, a visible warning
-blockquote is automatically appended to the generated HTML report:
+The plugin automatically detects and surfaces two types of report quality issues in the HTML output:
 
-> **⚠ Report truncated** — The Gemini (Free) response was cut off because it reached the
-> `max_tokens` limit. One or more sections (e.g. Recommendations, Verdict) may be missing.
-> Increase `max_tokens` in `ai-reporter.properties` for the `gemini` provider and regenerate.
+**1. Partial report — truncation caused missing sections**
 
-The plugin detects truncation via two signals — the standard `finish_reason: "length"` field,
-and a fallback check of `usage.completion_tokens >= max_tokens` for providers (such as Gemini)
-that return `finish_reason: "stop"` even when the token limit was hit.
+When the AI provider hits its token limit before completing all 7 sections, a consolidated notice names exactly which sections were completed and which were not reached, and recommends switching to a provider with a higher output limit:
 
-The default `max_tokens` for all providers is **8192**. If you still see truncated reports,
-increase the value for the affected provider in `ai-reporter.properties`:
+> **⚠ Partial report — Gemini (Free) reached its output limit**
+>
+> **Sections completed:** Executive Summary, Bottleneck Analysis, Error Analysis, Advanced Web Diagnostics, Root Cause Hypotheses, Recommendations
+>
+> **Sections not reached:** Verdict
+>
+> The SLA verdict and transaction metrics above are accurate regardless of the missing sections. For a complete report, regenerate using **Cerebras** or **Mistral** — both providers handle this dataset within their output limits.
+
+**2. Simple truncation — content cut mid-section**
+
+When truncation cuts off content inside the last section (all headings present but content incomplete), a shorter notice is shown:
+
+> **⚠ Report truncated** — The Mistral (Free) response was cut off before completing the last section. All section headings are present but the final section may be incomplete. To get a fully complete report, try regenerating or switch to **Cerebras** or **Mistral**.
+
+**3. Missing sections — model skipped a section**
+
+If a model silently skips a section without being truncated, a separate notice identifies the missing sections and recommends regenerating or switching providers.
+
+The plugin detects truncation via two signals — the standard `finish_reason: "length"` field, and a fallback check of `usage.completion_tokens >= max_tokens` for providers (such as Gemini) that return `finish_reason: "stop"` even when the token limit was hit.
+
+The default `max_tokens` for all providers is **8192**. If you see truncation warnings, you have two options:
+
+- **Switch provider** — Mistral and Cerebras handle large datasets reliably within the 8192 default. `gemini-2.5-flash` has also been shown to complete full reports within 8192 tokens.
+- **Increase the limit** — raise `max_tokens` for the affected provider in `ai-reporter.properties` (no restart needed):
 
 ```properties
 ai.reporter.gemini.max.tokens=16000
 ```
+
+Gemini models on older API versions (`gemini-2.0-flash`) tend to be more verbose — `12000–16000` is recommended if truncation occurs with those models.
+
+> **Validated providers:** This plugin has been validated against **Mistral** (`mistral-large-latest`), **Gemini** (`gemini-2.5-flash`), and **Cerebras** (`qwen-3-235b-a22b-instruct-2507`) across 27 test scenarios covering all SLA configurations. All three providers produce complete 7-section reports with 100% verdict accuracy on this workload.
 
 ### API Key Setup
 
@@ -321,24 +297,7 @@ ai.reporter.claude.api.key=sk-ant-your-key-here
 
 Select the provider from the dropdown next to the **Generate AI Report** button.
 
-### Provider Order and Tier Labels
-
-The dropdown order and free/paid labels are configurable in `ai-reporter.properties` — no
-rebuild required:
-
-```properties
-# Control the order providers appear in the dropdown (optional)
-# Providers not listed are appended alphabetically after those listed.
-ai.reporter.order=mistral,cerebras,gemini,groq,deepseek,openai,claude
-
-# Override the free/paid label for any provider (optional)
-# Built-in defaults are used when this property is absent.
-ai.reporter.mistral.tier=Free
-ai.reporter.cerebras.tier=Free
-ai.reporter.groq.tier=Free
-ai.reporter.openai.tier=Paid
-ai.reporter.claude.tier=Paid
-```
+> **Tip:** The dropdown order and free/paid labels are configurable via `ai.reporter.order` and `ai.reporter.<key>.tier` in `ai-reporter.properties` — no rebuild required.
 
 ---
 
@@ -375,15 +334,7 @@ cloud AI providers. No API key, no internet connection required after model down
 
 4. Select **ollama** from the provider dropdown and click **Generate AI Report**.
 
-### Recommendations
-
-| Concern                | Guidance                                                                          |
-|------------------------|-----------------------------------------------------------------------------------|
-| **Model quality**      | `qwen2.5:7b` or `mistral` produce the best performance analysis output            |
-| **Speed (CPU only)**   | Set `timeout.seconds=180` or higher; generation can take 1–3 minutes on CPU       |
-| **Speed (GPU)**        | Generation is near-instant; default `timeout.seconds=120` is sufficient           |
-| **Memory**             | Ensure at least 8 GB RAM free before pulling a 7B model                           |
-| **CLI usage**          | `--provider ollama` works identically to any other provider                       |
+For best output quality use `qwen2.5:7b` or `mistral`. On CPU-only machines set `timeout.seconds=180` or higher — generation can take 1–3 minutes. Ensure at least 8 GB RAM free before pulling a 7B model. `--provider ollama` works identically to any cloud provider in CLI mode.
 
 ---
 
@@ -541,14 +492,15 @@ mvn test-compile exec:java
 ## Troubleshooting
 
 **The AI report is missing sections — Recommendations or Verdict are absent, or a truncation warning appears.**
-The AI provider reached the `max_tokens` limit before finishing the report. If the response was
-cut short, a blockquote warning is shown at the end of the report with the provider name and the
-config key to increase. Raise the limit in `ai-reporter.properties`:
+The AI provider reached the `max_tokens` limit before finishing the report. A blockquote warning is shown in the report identifying which sections were completed and which were not. You have two options:
+
+- **Switch provider** — Mistral and Cerebras handle large datasets within the default 8192 token limit. `gemini-2.5-flash` also completes full reports reliably within 8192 tokens.
+- **Increase the limit** — raise `max_tokens` for the affected provider in `ai-reporter.properties` (no restart needed):
+
 ```properties
 ai.reporter.gemini.max.tokens=16000
 ```
-The default for all providers is `8192`. Gemini models tend to be more verbose — `12000–16000`
-is recommended if truncation occurs. After saving the file, regenerate the report (no restart needed).
+Older Gemini models (`gemini-2.0-flash`) tend to be more verbose — `12000–16000` is recommended for those. After saving, regenerate the report.
 
 **The plugin does not appear in JMeter's Add → Listener menu.**
 Verify the JAR is in `<JMETER_HOME>/lib/ext/` and not in `lib/` or any subdirectory.
@@ -596,14 +548,6 @@ Groq's free `on_demand` tier has a hard cap of 12,000 tokens per minute. The plu
 prompt combined with your JTL data exceeds this limit. Switch to Mistral (500,000 TPM free) or
 upgrade to the Groq Developer plan. No code changes are needed — just update the provider in
 the dropdown or `--provider` flag.
-
-**"HTTP 400 — context_length_exceeded" error (Cerebras).**
-The total request size exceeds the selected model's context window. Switch to a model with a
-larger context window — `qwen-3-235b-a22b-instruct-2507` (131K context) works reliably. Update
-in `ai-reporter.properties`:
-```properties
-ai.reporter.cerebras.model=qwen-3-235b-a22b-instruct-2507
-```
 
 **Ollama: "Could not connect" error.**
 Ollama is not running. Start it with `ollama serve` (or it starts automatically on most

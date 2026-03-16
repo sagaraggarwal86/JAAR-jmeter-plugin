@@ -13,9 +13,35 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>No HTTP client is involved — the method is exercised directly
  * (package-private) using hand-crafted JSON response strings that simulate
  * the OpenAI-compatible /v1/messages schema.</p>
+ *
+ * <p>All content assertions account for {@link AiReportService#SECTION_SKELETON}
+ * being prepended to the model's continuation before the method returns.</p>
  */
 @DisplayName("AiReportService — extractAndValidateContent")
 class AiReportServiceTest {
+
+    /** Mirror of {@link AiReportService#SECTION_SKELETON} for assertion use. */
+    private static final String SKELETON = AiReportService.SECTION_SKELETON;
+
+    /**
+     * A minimal but structurally complete 7-section markdown response.
+     * Used in happy-path tests that must not trigger the missing-sections notice.
+     */
+    private static final String FULL_CONTENT =
+            "## Executive Summary\n\nThe test ran well. BRIEF_VERDICT:PASS\n\n"
+                    + "## Bottleneck Analysis\n\nTHROUGHPUT-BOUND.\n\n"
+                    + "## Error Analysis\n\nError rate 1.01%.\n\n"
+                    + "## Advanced Web Diagnostics\n\nConnect 0ms.\n\n"
+                    + "## Root Cause Hypotheses\n\n#1 Backend processing.\n\n"
+                    + "## Recommendations\n\n| Priority | Hypothesis | Action | Expected Impact | Effort |\n"
+                    + "|---|---|---|---|---|\n| P2 | #1 | Optimise queries | Reduce latency | Medium |\n\n"
+                    + "## Verdict\n\nPASS — all SLAs met.\nVERDICT:PASS";
+
+    /** JSON-escaped version of {@link #FULL_CONTENT} for embedding in JSON strings. */
+    private static final String FULL_CONTENT_ESCAPED = FULL_CONTENT
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n");
 
     private AiReportService service;
 
@@ -40,31 +66,158 @@ class AiReportServiceTest {
     class NormalResponses {
 
         @Test
-        @DisplayName("finish_reason=stop returns content unchanged")
+        @DisplayName("finish_reason=stop — response with heading, no skeleton prepend")
         void finishReasonStop_returnsContentUnchanged() throws AiServiceException {
-            String json = buildResponse("Hello world", "stop");
+            // FULL_CONTENT starts with ## Executive Summary → skeleton NOT prepended
+            String json = buildResponse(FULL_CONTENT, "stop");
             String result = service.extractAndValidateContent(json);
-            assertEquals("Hello world", result);
+            assertEquals(FULL_CONTENT, result);
         }
 
         @Test
-        @DisplayName("finish_reason=end_turn returns content unchanged")
+        @DisplayName("finish_reason=end_turn — response with heading, no skeleton prepend")
         void finishReasonEndTurn_returnsContentUnchanged() throws AiServiceException {
-            String json = buildResponse("Analysis complete", "end_turn");
+            String json = buildResponse(FULL_CONTENT, "end_turn");
             String result = service.extractAndValidateContent(json);
-            assertEquals("Analysis complete", result);
+            assertEquals(FULL_CONTENT, result);
         }
 
         @Test
-        @DisplayName("missing finish_reason field returns content unchanged")
+        @DisplayName("missing finish_reason — response with heading, no skeleton prepend")
         void missingFinishReason_returnsContentUnchanged() throws AiServiceException {
             String json = "{"
                     + "\"choices\":[{"
-                    + "\"message\":{\"content\":\"No finish reason field\"},"
+                    + "\"message\":{\"content\":\"" + FULL_CONTENT_ESCAPED + "\"},"
                     + "\"index\":0"
                     + "}]}";
             String result = service.extractAndValidateContent(json);
-            assertEquals("No finish reason field", result);
+            assertEquals(FULL_CONTENT, result);
+        }
+
+        @Test
+        @DisplayName("response without heading — skeleton prepended (Cerebras pattern)")
+        void noHeading_skeletonPrepended() throws AiServiceException {
+            // Cerebras omits ## Executive Summary → skeleton must be prepended
+            String noHeading = "The load test ran well.\n\n"
+                    + "## Bottleneck Analysis\n\nTB.\n\n"
+                    + "## Error Analysis\n\nErr.\n\n"
+                    + "## Advanced Web Diagnostics\n\nDiag.\n\n"
+                    + "## Root Cause Hypotheses\n\nHyp.\n\n"
+                    + "## Recommendations\n\nRow.\n\n"
+                    + "## Verdict\n\nPASS.\nVERDICT:PASS";
+            String json = buildResponse(noHeading, "stop");
+            String result = service.extractAndValidateContent(json);
+            assertTrue(result.startsWith(SKELETON),
+                    "Skeleton must be prepended when heading is absent");
+            assertEquals(1, countOccurrences(result, "## Executive Summary"),
+                    "Exactly one ES heading in result");
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Missing sections detection
+    // ─────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("Missing sections detection")
+    class MissingSectionsDetection {
+
+        @Test
+        @DisplayName("all 7 sections present — no missing sections notice")
+        void allSectionsPresent_noNotice() throws AiServiceException {
+            String json = buildResponse(FULL_CONTENT, "stop");
+            String result = service.extractAndValidateContent(json);
+            assertFalse(result.contains("Missing sections detected"),
+                    "No missing sections notice when all 7 sections are present");
+            assertFalse(result.contains("Partial report"),
+                    "No partial report notice when all 7 sections are present");
+        }
+
+        @Test
+        @DisplayName("missing sections without truncation — model silently skipped notice")
+        void missingSections_notTruncated_noticeInjected() throws AiServiceException {
+            String partial = "## Executive Summary\n\nThe test ran well. VERDICT:PASS";
+            String json = buildResponse(partial, "stop");
+            String result = service.extractAndValidateContent(json);
+            assertTrue(result.contains("Missing sections detected"),
+                    "Missing sections notice must be injected");
+            assertTrue(result.contains("Bottleneck Analysis"),
+                    "Notice must name the missing section");
+            assertTrue(result.contains("Regenerate the report"),
+                    "Notice must recommend regenerating");
+            assertFalse(result.contains("Partial report"),
+                    "Must not use consolidated notice when not truncated");
+        }
+
+        @Test
+        @DisplayName("truncation with missing sections — consolidated graceful notice")
+        void truncationWithMissingSections_consolidatedNotice() throws AiServiceException {
+            // Gemini pattern: truncated AND Verdict section missing
+            String partial = "## Executive Summary\n\nContent. BRIEF_VERDICT:PASS\n\n"
+                    + "## Bottleneck Analysis\n\nTB.\n\n"
+                    + "## Error Analysis\n\nErr.\n\n"
+                    + "## Advanced Web Diagnostics\n\nDiag.\n\n"
+                    + "## Root Cause Hypotheses\n\nHyp.\n\n"
+                    + "## Recommendations\n\nRow.";
+            String json = buildResponseWithUsage(partial, "stop", 1500, 1500);
+            String result = service.extractAndValidateContent(json);
+            // Must use consolidated notice — NOT two separate notices
+            assertTrue(result.contains("Partial report"),
+                    "Consolidated notice header must appear");
+            assertTrue(result.contains("Sections completed"),
+                    "Consolidated notice must list completed sections");
+            assertTrue(result.contains("Sections not reached"),
+                    "Consolidated notice must list missing sections");
+            assertTrue(result.contains("Verdict"),
+                    "Missing section must be named");
+            assertFalse(result.contains("Missing sections detected"),
+                    "Must NOT show the separate missing-sections notice");
+            assertFalse(result.contains("Report truncated"),
+                    "Must NOT show the separate truncation notice");
+            assertFalse(result.contains("max_tokens"),
+                    "Must NOT recommend increasing max_tokens for fixed free-tier limits");
+            assertTrue(result.contains("Cerebras") || result.contains("Mistral"),
+                    "Must recommend alternative providers");
+            assertTrue(result.contains("SLA verdict") || result.contains("transaction metrics"),
+                    "Must reassure user that existing data is accurate");
+        }
+
+        @Test
+        @DisplayName("truncation with all sections present — simple truncation notice only")
+        void truncationAllSectionsPresent_simpleTruncationNotice() throws AiServiceException {
+            String json = buildResponseWithUsage(FULL_CONTENT, "stop", 1500, 1500);
+            String result = service.extractAndValidateContent(json);
+            assertTrue(result.contains("Report truncated"),
+                    "Simple truncation notice must appear");
+            assertFalse(result.contains("Partial report"),
+                    "Consolidated notice must NOT appear when all sections present");
+            assertFalse(result.contains("Missing sections detected"),
+                    "Missing sections notice must NOT appear");
+        }
+
+        @Test
+        @DisplayName("missing sections notice is a Markdown blockquote")
+        void missingSections_isBlockquote() throws AiServiceException {
+            String partial = "## Executive Summary\n\nContent. VERDICT:PASS";
+            String json = buildResponse(partial, "stop");
+            String result = service.extractAndValidateContent(json);
+            assertTrue(result.contains("\n> "),
+                    "Notice must be a Markdown blockquote");
+        }
+
+        @Test
+        @DisplayName("consolidated notice lists present sections correctly")
+        void consolidatedNotice_listsPresentSections() throws AiServiceException {
+            String partial = "## Executive Summary\n\nContent.\n\n"
+                    + "## Bottleneck Analysis\n\nTB.";
+            String json = buildResponseWithUsage(partial, "stop", 1500, 1500);
+            String result = service.extractAndValidateContent(json);
+            int noticeStart = result.indexOf("Partial report");
+            assertTrue(noticeStart >= 0, "Consolidated notice must be present");
+            String noticeText = result.substring(noticeStart);
+            assertTrue(noticeText.contains("Executive Summary"), "Present section listed");
+            assertTrue(noticeText.contains("Bottleneck Analysis"), "Present section listed");
+            assertTrue(noticeText.contains("Error Analysis"), "Missing section listed");
         }
     }
 
@@ -77,18 +230,16 @@ class AiReportServiceTest {
     class TruncationDetection {
 
         @Test
-        @DisplayName("finish_reason=length appends truncation notice to content")
+        @DisplayName("finish_reason=length appends truncation notice after content")
         void finishReasonLength_appendsTruncationNotice() throws AiServiceException {
-            String json = buildResponse("## Executive Summary\nSome analysis...", "length");
+            String json = buildResponse(FULL_CONTENT, "length");
             String result = service.extractAndValidateContent(json);
-            assertTrue(result.startsWith("## Executive Summary\nSome analysis..."),
+            assertTrue(result.startsWith(FULL_CONTENT),
                     "Original content must be preserved at the start");
             assertTrue(result.contains("⚠ Report truncated"),
                     "Truncation notice must be appended");
-            assertTrue(result.contains("max_tokens"),
-                    "Notice must mention max_tokens so user knows what to change");
-            assertTrue(result.contains("gemini"),
-                    "Notice must name the provider key");
+            assertTrue(result.contains("gemini") || result.contains("Gemini"),
+                    "Notice must name the provider");
         }
 
         @Test
@@ -96,29 +247,25 @@ class AiReportServiceTest {
         void truncationNotice_isMarkdownBlockquote() throws AiServiceException {
             String json = buildResponse("content", "length");
             String result = service.extractAndValidateContent(json);
-            // The notice must start with "> " so CommonMark renders it as a blockquote
             assertTrue(result.contains("\n> "),
                     "Truncation notice must be a Markdown blockquote (starts with '> ')");
         }
 
         @Test
-        @DisplayName("original content is not modified — only appended to")
+        @DisplayName("original content is not modified — notice appended only")
         void originalContent_notModified() throws AiServiceException {
+            // content without ## heading → skeleton prepended, then notice appended
             String original = "# Report\n\nSome data | with | pipes\n|---|---|---\n| a | b | c";
             String json = buildResponse(original, "length");
             String result = service.extractAndValidateContent(json);
-            assertTrue(result.startsWith(original),
-                    "Original content must appear verbatim at the start of the result");
+            assertTrue(result.startsWith(SKELETON + original),
+                    "Original content must appear verbatim after skeleton");
         }
-
-        // ── Usage-based fallback (Gemini non-standard behaviour) ──────────────
 
         @Test
         @DisplayName("usage.completion_tokens == max_tokens with finish_reason=stop triggers truncation notice")
         void usageAtLimit_withFinishStop_appendsTruncationNotice() throws AiServiceException {
-            // Gemini returns finish_reason="stop" even when the model hit the token limit.
-            // The usage fallback must detect this case and inject the notice.
-            String json = buildResponseWithUsage("## Some content...", "stop", 1500, 1500);
+            String json = buildResponseWithUsage(FULL_CONTENT, "stop", 1500, 1500);
             String result = service.extractAndValidateContent(json);
             assertTrue(result.contains("⚠ Report truncated"),
                     "Truncation notice must be appended when completion_tokens == max_tokens");
@@ -127,8 +274,7 @@ class AiReportServiceTest {
         @Test
         @DisplayName("usage.completion_tokens > max_tokens with finish_reason=stop triggers truncation notice")
         void usageOverLimit_withFinishStop_appendsTruncationNotice() throws AiServiceException {
-            // Defensive: some providers may report slightly over the configured limit.
-            String json = buildResponseWithUsage("Some content", "stop", 1502, 1500);
+            String json = buildResponseWithUsage(FULL_CONTENT, "stop", 1502, 1500);
             String result = service.extractAndValidateContent(json);
             assertTrue(result.contains("⚠ Report truncated"),
                     "Truncation notice must be appended when completion_tokens > max_tokens");
@@ -137,21 +283,19 @@ class AiReportServiceTest {
         @Test
         @DisplayName("usage.completion_tokens below max_tokens does not trigger truncation notice")
         void usageBelowLimit_noTruncationNotice() throws AiServiceException {
-            // finish_reason=stop and completion_tokens well below the limit — normal completion.
-            String json = buildResponseWithUsage("Complete report content.", "stop", 900, 1500);
+            String json = buildResponseWithUsage(FULL_CONTENT, "stop", 900, 1500);
             String result = service.extractAndValidateContent(json);
             assertFalse(result.contains("⚠ Report truncated"),
                     "No truncation notice expected when response completed normally");
-            assertEquals("Complete report content.", result);
+            assertEquals(FULL_CONTENT, result);
         }
 
         @Test
         @DisplayName("finish_reason=length takes precedence regardless of usage field")
         void finishReasonLength_precedesUsageCheck() throws AiServiceException {
-            // Both signals agree — must still inject notice exactly once.
-            String json = buildResponseWithUsage("Truncated content", "length", 1500, 1500);
+            String json = buildResponseWithUsage(FULL_CONTENT, "length", 1500, 1500);
             String result = service.extractAndValidateContent(json);
-            assertTrue(result.startsWith("Truncated content"),
+            assertTrue(result.startsWith(FULL_CONTENT),
                     "Original content must be preserved");
             assertEquals(1, countOccurrences(result, "⚠ Report truncated"),
                     "Truncation notice must appear exactly once");
@@ -160,18 +304,17 @@ class AiReportServiceTest {
         @Test
         @DisplayName("malformed usage object does not cause exception — falls back gracefully")
         void malformedUsage_noException() throws AiServiceException {
-            // usage present but completion_tokens is missing — must not throw.
             String json = "{"
                     + "\"choices\":[{"
-                    + "\"message\":{\"role\":\"assistant\",\"content\":\"Some content\"},"
+                    + "\"message\":{\"role\":\"assistant\",\"content\":\"" + FULL_CONTENT_ESCAPED + "\"},"
                     + "\"finish_reason\":\"stop\","
                     + "\"index\":0"
                     + "}],"
-                    + "\"usage\":{\"prompt_tokens\":200}"  // completion_tokens absent
+                    + "\"usage\":{\"prompt_tokens\":200}"
                     + "}";
             String result = service.extractAndValidateContent(json);
-            assertEquals("Some content", result,
-                    "Malformed usage must be ignored; content returned unchanged");
+            assertEquals(FULL_CONTENT, result,
+                    "Malformed usage must be ignored; content returned as-is");
         }
     }
 

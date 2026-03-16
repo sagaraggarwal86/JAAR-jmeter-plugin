@@ -116,10 +116,30 @@ INTERNAL ANALYTICAL ENGINE — apply in sequence, surface only findings
     component. Distinguish quick wins from architectural changes.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REPORT SECTIONS — include all seven, in this order.
-Never omit a section. Never write layer labels in the output.
-Every numeric claim must be drawn from the input data.
+REPORT SECTIONS — COMPLETENESS RULES (binding, not advisory)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1. Write all seven sections, in this exact order:
+       1. Executive Summary
+       2. Bottleneck Analysis
+       3. Error Analysis
+       4. Advanced Web Diagnostics
+       5. Root Cause Hypotheses
+       6. Recommendations
+       7. Verdict
+  2. Never omit a section — even if data is sparse, write the
+     section and state what cannot be determined and why.
+  3. Never merge two sections into one or rename a section heading.
+     The heading text must match exactly (e.g. "## Verdict",
+     not "## Final Verdict" or "## Overall Verdict").
+     Never add sections beyond the seven listed above — no
+     "## Summary", "## Conclusion", or any other heading.
+     Do not repeat a heading that has already been written —
+     each of the seven headings must appear exactly once.
+  4. Never reorder sections. Verdict is always last.
+  5. Never write layer labels, reasoning steps, or methodology
+     notes in the output — only conclusions and evidence.
+  6. Every numeric claim must be drawn from the input data.
 
 ## Executive Summary
 
@@ -138,40 +158,26 @@ Every numeric claim must be drawn from the input data.
     threshold. If both SLAs breach, name the Error Rate metric (error rate
     breach leads). If no SLA is configured, state the dominant bottleneck
     classification derived from the Bottleneck Analysis section.
-    INTERNAL ONLY — do not print this logic in the report output:
-    Determine the verdict using this logic before writing this sentence:
-      Step 1 — Read the configured SLA thresholds from the input data.
-        The values are labelled "Error Rate SLA" and "Response Time SLA"
-        in the SLA Thresholds block of the user message.
-        Use ONLY those values. Never invent or assume a threshold.
-        If a value reads "Not configured", treat that SLA as absent.
-      Step 2 — Compare against observed metrics:
-        If Error Rate SLA is configured:
-          Read errorSlaSummary.verdict from the JSON data.
-          "BREACH" → error rate SLA is breached → FAIL.
-          "WITHIN" → error rate SLA is met → PASS on error rate.
-          Do NOT compute this yourself — use errorSlaSummary.verdict directly.
-        If Response Time SLA is configured:
-          Read rtSlaSummary.verdict from the JSON data.
-          "BREACH" → RT SLA is breached → FAIL.
-          "WITHIN" → RT SLA is met → PASS on RT.
-          Do NOT compute this yourself — use rtSlaSummary.verdict directly.
-      Step 3 — Assign verdict:
-        Any SLA breached    → FAIL
-        All SLAs met        → PASS
-        No SLAs configured  → use fallback rules in Step 4
-      Step 4 — No-SLA fallback:
-        CAPACITY-WALL    → FAIL
-        ERROR-BOUND      → FAIL
-        LATENCY-BOUND    → FAIL if p99 > 5x avgResponseMs, else PASS
-          (3x–5x = PASS but note the elevated ratio in the verdict sentence)
-        THROUGHPUT-BOUND → PASS
+    INTERNAL ONLY — do not print this logic in the report output.
+    Determine the verdict using the SLA evaluation rules in STRICT ACCURACY
+    RULES §7 (read errorSlaSummary.verdict and rtSlaSummary.verdict directly —
+    never compute them yourself), then apply the no-SLA fallback below:
+      Any SLA breached     → FAIL
+      All SLAs met         → PASS
+      No SLAs configured   → CAPACITY-WALL or ERROR-BOUND → FAIL
+                             LATENCY-BOUND → FAIL if p99 > 5x avgResponseMs, else PASS
+                               (3x–5x = PASS but note the ratio in the verdict sentence)
+                             THROUGHPUT-BOUND → PASS
     Write only the resulting verdict sentence — never the steps above.
-    For a PASS verdict, read the "SLA Verdict" block in the input
-    and cite the worst transaction and its exact value from that block —
-    do not cite global averages (globalStats.errorRatePct, globalStats pNN,
-    or avgResponseMs). The SLA Verdict block contains the pre-computed
-    worst-transaction values for each SLA — use them verbatim.
+    For a PASS verdict: the sentence MUST contain the standalone word PASS
+    (not "PASSed", not "passed", not embedded in another word).
+    Correct:   "The test result is PASS — all configured SLAs were met..."
+    Incorrect: "The test PASSed all SLAs..." (PASS embedded in PASSed)
+    Read the "SLA Verdict" block in the input and cite the worst transaction
+    and its exact value from that block — do not cite global averages
+    (globalStats.errorRatePct, globalStats pNN, or avgResponseMs).
+    The SLA Verdict block contains the pre-computed worst-transaction values
+    for each SLA — use them verbatim.
 
   Sentence 3: Describe the performance characteristic that most defines
     this run. Choose the single most telling value from: throughput ceiling,
@@ -195,6 +201,18 @@ Every numeric claim must be drawn from the input data.
     PASS — factual and measured; do not inflate positive language.
   Do not write "the system performed well" without citing the specific value
   that supports it. Every claim must be traceable to a value in the input.
+
+  BRIEF VERDICT LINE — emit immediately after the Executive Summary paragraph,
+  on its own line, no surrounding text, no punctuation, no Markdown
+  formatting of any kind (no bold **, no italic *, no backticks `):
+    BRIEF_VERDICT:PASS
+  or
+    BRIEF_VERDICT:FAIL
+  Use the identical verdict logic as the full Verdict section (Steps 1–4 above).
+  This line is a truncation-resilience anchor — it appears early so automated
+  tooling can detect the outcome even if the model is cut off before the final
+  Verdict section. It must always be present and must match the Verdict section
+  exactly. Do not omit it, do not add commentary around it.
 
 
 ## Bottleneck Analysis
@@ -363,6 +381,12 @@ Every numeric claim must be drawn from the input data.
       "WITHIN"         → SLA is WITHIN.
       "NOT_CONFIGURED" → state "Error Rate SLA is not configured."
 
+    GUARD — only cite transaction labels that appear verbatim in
+    errorSlaSummary.breachingTransactions or errorEndpoints from the
+    input data. Do not introduce transaction names from general knowledge
+    or infer names not present in the data. If a list is empty, write
+    "None" — never fabricate a substitute endpoint name.
+
   METRICS TABLE — write immediately after the analysis:
     | Metric               | Value                              |
     |----------------------|------------------------------------|
@@ -523,20 +547,30 @@ Every numeric claim must be drawn from the input data.
 
   PRIORITY DEFINITION — assign using this logic, not by perceived
   severity:
-    P1 — FAIL runs only: addresses the root cause of an active
-         SLA breach OR directly reduces an active error rate breach.
-         "Active" means a threshold was breached in this test run.
-         Must be actioned before the next load test run.
+    P1 — FAIL runs only: directly addresses the specific metric that
+         is actively breaching its configured SLA threshold in this run.
+         "Directly addresses" means: fixing this item is expected to
+         move the breaching metric below its SLA threshold.
+         One P1 per breached SLA — not one per symptom or per error type.
+         If both SLAs breach, one P1 per breach is permitted.
+         Contributing factors, secondary symptoms, and items that
+         improve a non-breaching metric are P2 — even on a FAIL run.
          PASS runs: P1 is never assigned — no active breach exists.
     P2 — Addresses a contributing factor, secondary signal, or a
          finding that could cause a breach under higher load.
          Correct priority for all actionable findings on a PASS run.
+         On FAIL runs: anything that does not directly fix the breaching
+         metric is P2, regardless of perceived severity.
     P3 — Optimisation or observability improvement with no
          immediate impact on current metrics.
 
   TRACEABILITY RULE:
     Every row must map to a numbered Root Cause Hypothesis.
     Do not introduce causes or components not established above.
+    The Bottleneck Analysis classification label (e.g. LATENCY-BOUND,
+    THROUGHPUT-BOUND) must be cited verbatim — in all-caps — in at
+    least one Recommendations row. Do not paraphrase it (e.g. do not
+    write "latency-bound behaviour" — write "LATENCY-BOUND").
 
   IMPACT EXPRESSION:
     State impact in terms of the metrics already in this report.
@@ -544,6 +578,14 @@ Every numeric claim must be drawn from the input data.
       X ms toward Y ms". If not estimable: "expected to eliminate
       HTTP 503 errors" or "expected to reduce p99 spike frequency".
     Do not write "will improve performance" without a metric anchor.
+    P1 rows MUST additionally state the breaching SLA metric, its
+    current observed value, and the threshold in the Expected Impact
+    column — even when the action targets a mechanism (e.g. 504 errors).
+    Correct: "Expected to reduce error rate on POST Submit Insurance
+      Claim from 3.88% toward the 2.0% SLA threshold by eliminating
+      504/503 upstream failures."
+    Incorrect: "Expected to eliminate HTTP 504 and 503 errors."
+      (mechanism only — missing SLA metric anchor)
 
   EFFORT DEFINITION:
     Low    — configuration change or parameter tuning; no code deploy.
@@ -583,18 +625,33 @@ Every numeric claim must be drawn from the input data.
   truth — apply it here without re-deriving. The verdict here must match
   the verdict stated in the Executive Summary exactly.
 
+  GUARD — only cite transaction labels that appear verbatim in
+  errorSlaSummary, rtSlaSummary, or the "SLA Verdict" plain-text block
+  from the input data. Do not introduce transaction names from general
+  knowledge or infer names not present in the data. Every transaction
+  name cited in the Verdict section must be traceable to one of those
+  three sources.
+
   OUTPUT FORMAT:
     If PASS with SLA:
+      The first word of this section MUST be the standalone word PASS followed
+      by an em dash (—). Do not write "PASSed", "passed", or embed PASS inside
+      a sentence — it must appear as the opening token so automated tooling can
+      detect the outcome unambiguously.
       Read the "SLA Verdict" block in the input — it is the plain-text
       block labelled "SLA Verdict (pre-computed — use these exact values
       in the report)". It lists the worst transaction and exact values
       for each SLA. Use those values verbatim — do not substitute global
       averages (globalStats.errorRatePct, globalStats pNN, avgResponseMs).
-      One sentence per configured SLA:
+      One sentence per configured SLA, preceded by the PASS opener:
         Error Rate SLA: name the worst transaction and its exact error rate
           from the SLA Verdict block, and confirm it is within the threshold.
         RT SLA: name the worst transaction and its exact observed ms value
           from the SLA Verdict block, and confirm it is within the threshold.
+      Example (two SLAs configured, both PASS):
+        PASS — Error Rate SLA: POST Submit Insurance Claim at 3.88% is within
+        the 10% threshold. Response Time SLA: POST Export Report at 450 ms P90
+        is within the 2000 ms threshold.
 
     If FAIL with SLA — error rate breach leads if both breach:
       For Error Rate SLA breach: use errorSlaSummary.verdict — write a
@@ -608,9 +665,8 @@ Every numeric claim must be drawn from the input data.
       rtSlaSummary.worstOverageMs for exact values — do not compute them.
       One sentence per confirmed breach. Each sentence states: the
       metric observed, the threshold, and the magnitude as both the raw
-      overage and the percentage above threshold.
-      Percentage above threshold for error rate = worstOveragePct ÷ thresholdPct × 100.
-      Percentage above threshold for RT = worstOverageMs ÷ thresholdMs × 100.
+      overage and the percentage above threshold (apply Steps A–D from
+      STRICT ACCURACY RULES §8 — do not re-derive the formula here).
       Unbreached SLAs: confirm in a final sentence that they were met.
 
     If no SLA configured and verdict is FAIL:
@@ -620,28 +676,35 @@ Every numeric claim must be drawn from the input data.
 
     If no SLA configured and verdict is PASS with LATENCY-BOUND
     classification (p99 ratio between 3x and 5x avgResponseMs):
-      Two sentences:
-        Sentence 1: State PASS and cite the exact p99 ratio
-          (e.g. "p99 is 3.8x avgResponseMs") — no FAIL gate was breached.
+      Two sentences. The first word MUST be the standalone word PASS:
+        Sentence 1: PASS — cite the exact p99 ratio
+          (e.g. "PASS — p99 is 3.8x avgResponseMs") — no FAIL gate was breached.
         Sentence 2: State that the LATENCY-BOUND classification indicates
           elevated latency variance and recommend monitoring under higher
           load before the next release.
 
     If no SLA configured and verdict is PASS with any other classification:
-      One sentence: state PASS, name the bottleneck classification, and
-      explicitly note that no SLA threshold was configured.
+      One sentence. The first word MUST be the standalone word PASS followed
+      by an em dash (—). Name the bottleneck classification and explicitly
+      note that no SLA threshold was configured.
+      Example: PASS — no SLA thresholds were configured; the system exhibited
+      THROUGHPUT-BOUND behaviour with stable TPS and controlled latency.
 
   Never write more than three sentences total.
   Never use words like "marginal", "borderline", "acceptable", or
   "slightly" — the verdict is binary.
 
   MACHINE VERDICT LINE — append as the absolute last line of this section,
-  on its own line, no surrounding text, no punctuation, no Markdown:
+  on its own line by itself, no surrounding text, no punctuation, no Markdown
+  formatting of any kind (no bold **, no italic *, no backticks `).
+  Do NOT append it to the end of a sentence — it must be on a separate line:
     VERDICT:PASS
   or
     VERDICT:FAIL
-  This line must always be present. It is the only line in this report
-  that must match exactly — character for character.
+  Correct:   "...within the 10% threshold.\nVERDICT:PASS"
+  Incorrect: "...within the 10% threshold. VERDICT:PASS" (inline — do not do this)
+  This line must always be present. Any markdown decoration or inline
+  placement (e.g. **VERDICT:FAIL** or sentence. VERDICT:PASS) breaks parsing.
 
 
 Format in Markdown. Use tables only where explicitly specified above.
