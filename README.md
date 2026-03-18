@@ -113,7 +113,7 @@ cp target/jaar-jmeter-plugin-*.jar $JMETER_HOME/lib/ext/
 3. The metrics table populates immediately
 4. Adjust filters as needed — the table updates without re-browsing
 
-<img src="docs/img.jpg" alt="JAAR — JTL AI Analysis & Reporting plugin UI" width="500">
+<img src="docs/Image.jpg" alt="JAAR — JTL AI Analysis & Reporting plugin UI" width="500">
 
 ---
 
