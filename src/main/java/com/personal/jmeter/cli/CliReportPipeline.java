@@ -20,7 +20,14 @@ import java.util.*;
  */
 final class CliReportPipeline {
 
-    private static final String TOTAL_LABEL = "TOTAL";
+    /**
+     * Immutable result returned by {@link #execute()}.
+     * Carries the output HTML path and the extracted AI verdict.
+     *
+     * @param outputPath absolute path of the generated HTML report
+     * @param verdict    extracted verdict: "PASS", "FAIL", or "UNDECISIVE"
+     */
+    record PipelineResult(String outputPath, String verdict) {}
 
     private final CliArgs args;
     private final PrintStream progress;
@@ -37,10 +44,11 @@ final class CliReportPipeline {
     /**
      * Executes the full pipeline.
      *
-     * @return the absolute path of the generated HTML report
+     * @return {@link PipelineResult} containing the absolute path of the generated
+     *         HTML report and the extracted AI verdict ("PASS", "FAIL", or "UNDECISIVE")
      * @throws IOException on parse, AI, or write failure
      */
-    String execute() throws IOException {
+    PipelineResult execute() throws IOException {
 
         // Step 1 — Parse JTL
         progress("Parsing JTL file: " + args.inputFile());
@@ -48,8 +56,8 @@ final class CliReportPipeline {
         JTLParser.ParseResult result = new JTLParser().parse(args.inputFile(), opts);
         progress("Parsed %d transaction types, %d total samples.",
                 Math.max(0, result.results.size() - 1),
-                result.results.containsKey(TOTAL_LABEL)
-                        ? result.results.get(TOTAL_LABEL).getCount() : 0);
+                result.results.containsKey(JTLParser.TOTAL_LABEL)
+                        ? result.results.get(JTLParser.TOTAL_LABEL).getCount() : 0);
 
         // Step 2 — Build table rows
         List<String[]> tableRows = buildTableRows(result, opts.percentile);
@@ -62,12 +70,12 @@ final class CliReportPipeline {
                 result.formattedDuration(),
                 args.virtualUsers() > 0 ? String.valueOf(args.virtualUsers()) : "");
 
-        // Step 3 — Resolve AI provider
+        // Step 4 — Resolve AI provider
         progress("Loading provider configuration from: " + args.configFile());
         AiProviderConfig provider = resolveProvider();
         progress("Provider: %s (model: %s)", provider.displayName, provider.model);
 
-        // Step 4 — Validate and ping
+        // Step 5 — Validate and ping
         progress("Validating API key and pinging %s...", provider.displayName);
         String pingError = AiProviderRegistry.validateAndPing(provider);
         if (pingError != null) {
@@ -76,7 +84,7 @@ final class CliReportPipeline {
         }
         progress("Ping successful.");
 
-        // Step 5 — Load prompt and build content
+        // Step 6 — Load prompt and build content
         progress("Building analysis prompt...");
         String systemPrompt = PromptLoader.load();
         if (systemPrompt == null) {
@@ -84,20 +92,40 @@ final class CliReportPipeline {
         }
         PromptContent prompt = buildPromptContent(result, systemPrompt, timeCtx);
 
-        // Step 6 — Call AI
+        // Step 7 — Call AI
         progress("Calling %s (this may take 30-60 seconds)...", provider.displayName);
         AiReportService service = new AiReportService(provider);
-        String markdown = service.generateReport(prompt);
+        final String markdown;
+        try {
+            markdown = service.generateReport(prompt);
+        } catch (AiServiceException ex) {
+            // Evict the ping cache when the provider rejects the request with an auth error
+            // (HTTP 401 = key rejected, HTTP 403 = access denied / quota exceeded).
+            // This forces a fresh live ping on the next run instead of hitting the stale
+            // cached-success entry — which would otherwise bypass the ping indefinitely.
+            if (ex.getMessage().contains("HTTP 401") || ex.getMessage().contains("HTTP 403")) {
+                progress("Auth failure from provider — evicting ping cache for next run. provider=%s",
+                        provider.providerKey);
+                AiProviderRegistry.evictPingCache(provider);
+            }
+            throw ex;
+        }
         progress("AI response received (%d characters).", markdown.length());
 
-        // Step 7 — Render HTML
+        // Step 8 — Extract verdict and strip machine verdict line before rendering
+        String verdict       = MarkdownUtils.extractVerdict(markdown);
+        String verdictSource = MarkdownUtils.verdictSource(markdown);
+        String strippedMarkdown = MarkdownUtils.stripVerdictLine(markdown);
+        progress("Verdict: %s (source: %s)", verdict, verdictSource);
+
+        // Step 9 — Render HTML
         progress("Rendering HTML report...");
-        HtmlReportRenderer.RenderConfig config = buildRenderConfig(result, timeCtx);
+        HtmlReportRenderer.RenderConfig config = buildRenderConfig(result, timeCtx, provider);
         String outputPath = new HtmlReportRenderer().renderToFile(
-                markdown, args.outputFile(), config, tableRows, result.timeBuckets);
+                strippedMarkdown, args.outputFile(), config, tableRows, result.timeBuckets);
         progress("Report saved to: " + outputPath);
 
-        return outputPath;
+        return new PipelineResult(outputPath, verdict);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -124,7 +152,7 @@ final class CliReportPipeline {
         for (SamplingStatCalculator calc : result.results.values()) {
             if (calc.getCount() == 0) continue;
             String label = calc.getLabel();
-            if (TOTAL_LABEL.equals(label)) continue;
+            if (JTLParser.TOTAL_LABEL.equals(label)) continue;
 
             // Apply search filter if specified
             if (!args.search().isBlank()
@@ -166,7 +194,7 @@ final class CliReportPipeline {
         String slaErrorPct = args.hasErrorSla()
                 ? args.errorSla() + "%" : "Not configured";
         String slaRtMs = args.hasRtSla()
-                ? args.rtSla() + "ms" : "Not configured";
+                ? args.rtSla() + " ms" : "Not configured";
         String slaRtMetric = "percentile".equals(args.rtMetric())
                 ? "P" + args.percentile() + " (ms)" : "Avg (ms)";
 
@@ -188,7 +216,8 @@ final class CliReportPipeline {
 
         return new PromptBuilder(systemPrompt)
                 .build(result.results, args.percentile(), request,
-                        result.errorTypeSummary, latency);
+                        result.errorTypeSummary, latency,
+                        result.timeBuckets);
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -196,7 +225,11 @@ final class CliReportPipeline {
     // ─────────────────────────────────────────────────────────────
 
     private HtmlReportRenderer.RenderConfig buildRenderConfig(JTLParser.ParseResult result,
-                                                              TimeContext timeCtx) {
+                                                              TimeContext timeCtx,
+                                                              AiProviderConfig provider) {
+        double errorSla = args.hasErrorSla() ? (double) args.errorSla() : -1.0;
+        long   rtSla    = args.hasRtSla()    ? (long)   args.rtSla()    : -1L;
+        String rtMetric = "percentile".equals(args.rtMetric()) ? "pnn" : "avg";
         return new HtmlReportRenderer.RenderConfig(
                 timeCtx.users(),
                 args.scenarioName(),
@@ -205,7 +238,9 @@ final class CliReportPipeline {
                 timeCtx.startTime(),
                 timeCtx.endTime(),
                 timeCtx.duration(),
-                args.percentile());
+                args.percentile(),
+                provider.displayName,
+                errorSla, rtSla, rtMetric);
     }
 
     // ─────────────────────────────────────────────────────────────

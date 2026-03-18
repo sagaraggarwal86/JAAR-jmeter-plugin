@@ -1,5 +1,6 @@
 package com.personal.jmeter.listener;
 
+import com.personal.jmeter.parser.JTLParser;
 import org.apache.jmeter.visualizers.SamplingStatCalculator;
 
 import javax.swing.*;
@@ -11,15 +12,13 @@ import java.util.*;
 
 /**
  * Handles table population, sorting, and column visibility for the
- * Configurable Aggregate Report results table.
+ * JAAR results table.
  *
  * <p>Extracted from {@link AggregateReportPanel} to satisfy the 300-line class
  * design limit (Standard 3 SRP). Responsibility: data rendering only — no I/O,
  * no network, no file access.</p>
  */
 public final class TablePopulator {
-
-    private static final String TOTAL_LABEL = "TOTAL";
 
     /** DecimalFormat for integer-rounded values (response times). */
     private static final DecimalFormat FORMAT_INTEGER = new DecimalFormat("#");
@@ -77,7 +76,7 @@ public final class TablePopulator {
         for (SamplingStatCalculator calc : results.values()) {
             if (calc.getCount() == 0) continue;
             String label = calc.getLabel();
-            boolean isTotal = TOTAL_LABEL.equals(label);
+            boolean isTotal = JTLParser.TOTAL_LABEL.equals(label);
             if (!isTotal && !TransactionFilter.matches(label, searchPat, useRegex)) continue;
 
             Object[] row = buildRow(calc, pFraction);
@@ -117,7 +116,7 @@ public final class TablePopulator {
      */
     public static String[] buildRowAsStrings(SamplingStatCalculator calc, double pFraction) {
         long total  = calc.getCount();
-        long failed = Math.round(calc.getErrorPercentage() * total);
+        long failed = Math.min(Math.round(calc.getErrorPercentage() * total), total);
         return new String[]{
                 calc.getLabel(),
                 String.valueOf(total),
@@ -240,7 +239,7 @@ public final class TablePopulator {
         List<String[]> rows = new ArrayList<>(tableModel.getRowCount());
         for (int r = 0; r < tableModel.getRowCount(); r++) {
             Object nameCell = tableModel.getValueAt(r, 0);
-            if (TOTAL_LABEL.equals(nameCell != null ? nameCell.toString() : "")) continue;
+            if (JTLParser.TOTAL_LABEL.equals(nameCell != null ? nameCell.toString() : "")) continue;
             String[] cells = new String[AggregateReportPanel.ALL_COLUMNS.length];
             for (int c = 0; c < AggregateReportPanel.ALL_COLUMNS.length; c++) {
                 Object v = tableModel.getValueAt(r, c);
