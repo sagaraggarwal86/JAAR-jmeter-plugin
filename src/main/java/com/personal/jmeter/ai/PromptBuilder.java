@@ -242,7 +242,7 @@ public class PromptBuilder {
         Map<String, Object> errSla = (Map<String, Object>) summary.get("errorSlaSummary");
         @SuppressWarnings("unchecked")
         Map<String, Object> rtSla  = (Map<String, Object>) summary.get("rtSlaSummary");
-        String slaVerdictBlock = buildSlaVerdictBlock(errSla, rtSla, percentile);
+        String slaVerdictBlock = buildSlaVerdictBlock(errSla, rtSla, percentile, summary);
 
         return """
                 DATA SOURCE: All metrics below reflect the user's currently \
@@ -309,12 +309,15 @@ public class PromptBuilder {
      *   Overall Verdict : PASS
      * </pre></p>
      *
-     * @param errSla pre-computed error SLA summary map from {@code errorSlaSummary}
-     * @param rtSla  pre-computed RT SLA summary map from {@code rtSlaSummary}
+     * @param errSla    pre-computed error SLA summary map from {@code errorSlaSummary}
+     * @param rtSla     pre-computed RT SLA summary map from {@code rtSlaSummary}
+     * @param percentile configured percentile for metric label formatting
+     * @param summary   full summary map containing {@code overallVerdictSummary}
      * @return plain-text block string
      */
     private static String buildSlaVerdictBlock(
-            Map<String, Object> errSla, Map<String, Object> rtSla, int percentile) {
+            Map<String, Object> errSla, Map<String, Object> rtSla,
+            int percentile, Map<String, Object> summary) {
 
         StringBuilder sb = new StringBuilder(
                 "SLA Verdict (pre-computed — use these exact values in the report):\n");
@@ -342,9 +345,6 @@ public class PromptBuilder {
             Object rtObs     = rtSla.getOrDefault("worstObservedMs", "");
             Object rtThresh  = rtSla.getOrDefault("thresholdMs", "");
             String rtMetric  = String.valueOf(rtSla.getOrDefault("metric", "pnnMs"));
-            // Derive human-readable metric label from the actual configured percentile
-            // rather than using the generic "Pnn" placeholder.
-            // "avgMs" → "Avg";  "pnnMs" → "P90", "P95", "P99" etc.
             String metricLabel = "avgMs".equals(rtMetric) ? "Avg" : "P" + percentile;
             sb.append("  Response Time SLA : ").append(rtVerdict)
                     .append(" | worst transaction: ").append(rtWorst)
@@ -352,9 +352,13 @@ public class PromptBuilder {
                     .append(" | threshold: ").append(rtThresh).append(" ms\n");
         }
 
-        // ── Overall verdict line ─────────────────────────────────────────
-        boolean anyBreach = "BREACH".equals(errVerdict) || "BREACH".equals(rtVerdict);
-        sb.append("  Overall Verdict   : ").append(anyBreach ? "FAIL" : "PASS");
+        // ── Overall verdict line — from pre-computed overallVerdictSummary ─
+        @SuppressWarnings("unchecked")
+        Map<String, Object> overallVerdict = (summary != null)
+                ? (Map<String, Object>) summary.getOrDefault("overallVerdictSummary", Map.of())
+                : Map.of();
+        String verdict = String.valueOf(overallVerdict.getOrDefault("verdict", "PASS"));
+        sb.append("  Overall Verdict   : ").append(verdict);
 
         return sb.toString();
     }
@@ -583,6 +587,21 @@ public class PromptBuilder {
         // Uses allStats as source — covers all 100% of transactions, not just the
         // capped errorEndpoints list — so no transaction is silently excluded.
         summary.put("errorSlaSummary", buildErrorSlaSummary(allStats, userErrorSlaThreshold));
+        // classificationSummary: pre-computed bottleneck classification — Java executes
+        // the decision tree (Gate 1–4) so the AI never needs to compare errorRatePct,
+        // latency_ratio, or plateau values itself. Eliminates the SLA-leaks-into-classification
+        // error observed across all providers when SLA verdicts are BREACH.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> globalStats = (Map<String, Object>) summary.get("globalStats");
+        summary.put("classificationSummary", buildClassificationSummary(globalStats, timeBuckets));
+        // overallVerdictSummary: pre-computed final PASS/FAIL verdict combining SLA
+        // results with the classification-based no-SLA fallback. Java resolves the
+        // full verdict so the AI never needs to evaluate SLA + classification → verdict.
+        summary.put("overallVerdictSummary", buildOverallVerdictSummary(
+                summary.get("errorSlaSummary"),
+                summary.get("rtSlaSummary"),
+                summary.get("classificationSummary"),
+                globalStats));
         return summary;
     }
 
@@ -804,6 +823,205 @@ public class PromptBuilder {
     // ─────────────────────────────────────────────────────────────
     // TPS series builder
     // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Pre-computes the bottleneck classification from globalStats and tpsSeries.
+     *
+     * <p>Classification rules (from the prompt, now executed in Java):</p>
+     * <ul>
+     *   <li>ERROR-BOUND: globalStats.errorRatePct &gt; 2.0%</li>
+     *   <li>CAPACITY-WALL: TPS plateaued AND latency_ratio &gt; 3.0</li>
+     *   <li>LATENCY-BOUND: latency_ratio &gt; 3.0 AND NOT plateaued AND errorRatePct &le; 2.0%</li>
+     *   <li>THROUGHPUT-BOUND: plateaued AND latency_ratio &le; 3.0 AND errorRatePct &le; 2.0%</li>
+     *   <li>DEFAULT (THROUGHPUT-BOUND): none of the above fully satisfied</li>
+     * </ul>
+     *
+     * <p>TPS plateau: tailAvgTps/peakTps &ge; 0.90 (tail = last 25% of tpsSeries).</p>
+     *
+     * @param globalStats pre-built global statistics map
+     * @param timeBuckets ordered time buckets from JTL parser
+     * @return map with label, latencyRatio, plateauRatio, peakTps, tailAvgTps, reasoning
+     */
+    static Map<String, Object> buildClassificationSummary(
+            Map<String, Object> globalStats,
+            List<JTLParser.TimeBucket> timeBuckets) {
+
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        if (globalStats == null || globalStats.isEmpty()) {
+            result.put("label", "THROUGHPUT-BOUND");
+            result.put("reasoning", "No global stats available — DEFAULT classification applied.");
+            return result;
+        }
+
+        double avgMs    = asDouble(globalStats.getOrDefault("avgResponseMs", 0.0));
+        double p99Ms    = asDouble(globalStats.getOrDefault("p99ResponseMs", 0.0));
+        double errPct   = asDouble(globalStats.getOrDefault("errorRatePct", 0.0));
+
+        // ── Latency ratio ────────────────────────────────────────────
+        double latencyRatio;
+        if (avgMs <= 0) {
+            latencyRatio = 0.0;
+            result.put("latencyRatio", 0.0);
+            result.put("latencyRatioNote", "avgResponseMs is 0 — ratio undefined, DEFAULT applies.");
+        } else {
+            latencyRatio = round2(p99Ms / avgMs);
+            result.put("latencyRatio", latencyRatio);
+        }
+
+        // ── TPS plateau assessment ───────────────────────────────────
+        boolean plateaued = false;
+        double plateauRatio = 0.0;
+        double peakTps = 0.0;
+        double tailAvgTps = 0.0;
+
+        if (timeBuckets != null && !timeBuckets.isEmpty()) {
+            // Step A — peak TPS
+            for (JTLParser.TimeBucket b : timeBuckets) {
+                if (b.tps > peakTps) peakTps = b.tps;
+            }
+            // Step B — final 25% of entries
+            int totalBuckets = timeBuckets.size();
+            int tailStart = totalBuckets - Math.max(1, totalBuckets / 4);
+            // Step C — tail average TPS
+            double tailSum = 0.0;
+            int tailCount = 0;
+            for (int i = tailStart; i < totalBuckets; i++) {
+                tailSum += timeBuckets.get(i).tps;
+                tailCount++;
+            }
+            tailAvgTps = tailCount > 0 ? tailSum / tailCount : 0.0;
+            // Step D — plateau ratio
+            plateauRatio = peakTps > 0 ? round2(tailAvgTps / peakTps) : 0.0;
+            // Step E — plateaued if ratio >= 0.90
+            plateaued = plateauRatio >= 0.90;
+
+            result.put("peakTps", round2(peakTps));
+            result.put("tailAvgTps", round2(tailAvgTps));
+            result.put("plateauRatio", plateauRatio);
+            result.put("plateaued", plateaued);
+        } else {
+            result.put("plateaued", false);
+            result.put("plateauNote", "tpsSeries absent — plateau cannot be assessed, DEFAULT applies.");
+        }
+
+        // ── Classification decision tree ─────────────────────────────
+        String label;
+        String reasoning;
+
+        if (errPct > 2.0) {
+            label = "ERROR-BOUND";
+            reasoning = String.format(
+                    "globalStats.errorRatePct=%.2f%% exceeds 2.0%% threshold.", errPct);
+        } else if (plateaued && latencyRatio > 3.0) {
+            label = "CAPACITY-WALL";
+            reasoning = String.format(
+                    "TPS plateaued (ratio=%.2f) AND latencyRatio=%.2f > 3.0.", plateauRatio, latencyRatio);
+        } else if (!plateaued && latencyRatio > 3.0 && errPct <= 2.0) {
+            label = "LATENCY-BOUND";
+            reasoning = String.format(
+                    "latencyRatio=%.2f > 3.0 AND TPS not plateaued AND errorRatePct=%.2f%% <= 2.0%%.",
+                    latencyRatio, errPct);
+        } else if (plateaued && latencyRatio <= 3.0 && errPct <= 2.0) {
+            label = "THROUGHPUT-BOUND";
+            reasoning = String.format(
+                    "TPS plateaued (ratio=%.2f) AND latencyRatio=%.2f <= 3.0 AND errorRatePct=%.2f%% <= 2.0%%.",
+                    plateauRatio, latencyRatio, errPct);
+        } else {
+            // DEFAULT
+            label = "THROUGHPUT-BOUND";
+            reasoning = String.format(
+                    "No classification threshold fully met (errorRatePct=%.2f%%, latencyRatio=%.2f, plateaued=%s). DEFAULT applied.",
+                    errPct, latencyRatio, plateaued);
+        }
+
+        result.put("label", label);
+        result.put("reasoning", reasoning);
+        return result;
+    }
+
+    /**
+     * Pre-computes the final PASS/FAIL verdict from SLA results and classification.
+     *
+     * <p>Verdict logic:</p>
+     * <ul>
+     *   <li>Any SLA breached → FAIL</li>
+     *   <li>All SLAs met → PASS</li>
+     *   <li>No SLAs configured → classification fallback:
+     *     CAPACITY-WALL or ERROR-BOUND → FAIL;
+     *     LATENCY-BOUND → FAIL if p99 &gt; 5x avg, else PASS;
+     *     THROUGHPUT-BOUND → PASS</li>
+     * </ul>
+     *
+     * @param errSla         pre-computed error SLA summary
+     * @param rtSla          pre-computed RT SLA summary
+     * @param classification pre-computed classification summary
+     * @param globalStats    pre-built global statistics map
+     * @return map with verdict, source, and reasoning
+     */
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> buildOverallVerdictSummary(
+            Object errSla, Object rtSla, Object classification, Map<String, Object> globalStats) {
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        Map<String, Object> err = (errSla instanceof Map) ? (Map<String, Object>) errSla : Map.of();
+        Map<String, Object> rt  = (rtSla instanceof Map)  ? (Map<String, Object>) rtSla  : Map.of();
+        Map<String, Object> cls = (classification instanceof Map) ? (Map<String, Object>) classification : Map.of();
+
+        String errVerdict = String.valueOf(err.getOrDefault("verdict", "NOT_CONFIGURED"));
+        String rtVerdict  = String.valueOf(rt.getOrDefault("verdict", "NOT_CONFIGURED"));
+        String label      = String.valueOf(cls.getOrDefault("label", "THROUGHPUT-BOUND"));
+
+        boolean errConfigured = !"NOT_CONFIGURED".equals(errVerdict);
+        boolean rtConfigured  = !"NOT_CONFIGURED".equals(rtVerdict);
+        boolean anyConfigured = errConfigured || rtConfigured;
+
+        if (anyConfigured) {
+            boolean anyBreach = "BREACH".equals(errVerdict) || "BREACH".equals(rtVerdict);
+            if (anyBreach) {
+                result.put("verdict", "FAIL");
+                result.put("source", "SLA");
+                StringBuilder reason = new StringBuilder("SLA breach:");
+                if ("BREACH".equals(errVerdict))
+                    reason.append(" errorSlaSummary.verdict=BREACH;");
+                if ("BREACH".equals(rtVerdict))
+                    reason.append(" rtSlaSummary.verdict=BREACH;");
+                result.put("reasoning", reason.toString());
+            } else {
+                result.put("verdict", "PASS");
+                result.put("source", "SLA");
+                result.put("reasoning", "All configured SLAs met.");
+            }
+        } else {
+            // No SLAs configured — classification fallback
+            result.put("source", "CLASSIFICATION");
+            switch (label) {
+                case "CAPACITY-WALL", "ERROR-BOUND" -> {
+                    result.put("verdict", "FAIL");
+                    result.put("reasoning", label + " classification → FAIL (no SLA configured).");
+                }
+                case "LATENCY-BOUND" -> {
+                    double avgMs = asDouble(globalStats.getOrDefault("avgResponseMs", 0.0));
+                    double p99Ms = asDouble(globalStats.getOrDefault("p99ResponseMs", 0.0));
+                    if (avgMs > 0 && p99Ms > 5.0 * avgMs) {
+                        result.put("verdict", "FAIL");
+                        result.put("reasoning", String.format(
+                                "LATENCY-BOUND with p99=%.2f > 5x avg=%.2f → FAIL.", p99Ms, avgMs));
+                    } else {
+                        result.put("verdict", "PASS");
+                        result.put("reasoning", String.format(
+                                "LATENCY-BOUND but p99=%.2f <= 5x avg=%.2f → PASS.", p99Ms, avgMs));
+                    }
+                }
+                default -> { // THROUGHPUT-BOUND
+                    result.put("verdict", "PASS");
+                    result.put("reasoning", "THROUGHPUT-BOUND classification → PASS (no SLA configured).");
+                }
+            }
+        }
+
+        return result;
+    }
 
     /**
      * Builds a compact TPS time-series from the parsed time buckets.

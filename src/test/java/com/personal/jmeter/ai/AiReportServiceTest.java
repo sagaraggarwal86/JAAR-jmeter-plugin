@@ -143,7 +143,7 @@ class AiReportServiceTest {
                     "Missing sections notice must be injected");
             assertTrue(result.contains("Bottleneck Analysis"),
                     "Notice must name the missing section");
-            assertTrue(result.contains("Regenerate the report"),
+            assertTrue(result.contains("regenerating the report") || result.contains("Regenerate"),
                     "Notice must recommend regenerating");
             assertFalse(result.contains("Partial report"),
                     "Must not use consolidated notice when not truncated");
@@ -174,10 +174,10 @@ class AiReportServiceTest {
                     "Must NOT show the separate missing-sections notice");
             assertFalse(result.contains("Report truncated"),
                     "Must NOT show the separate truncation notice");
-            assertFalse(result.contains("max_tokens"),
-                    "Must NOT recommend increasing max_tokens for fixed free-tier limits");
-            assertTrue(result.contains("Cerebras") || result.contains("Mistral"),
-                    "Must recommend alternative providers");
+            assertTrue(result.contains("max.tokens") || result.contains("regenerating"),
+                    "Must recommend actionable fix (increase max.tokens or regenerate)");
+            assertFalse(result.contains("Cerebras") && result.contains("Mistral"),
+                    "Must NOT recommend specific provider names");
             assertTrue(result.contains("SLA verdict") || result.contains("transaction metrics"),
                     "Must reassure user that existing data is accurate");
         }

@@ -72,6 +72,20 @@ STRICT ACCURACY RULES — these override everything else:
               Writing BREACH when overage ≤ 0 is a critical error.
      The percentage above threshold = overage ÷ thresholdValue × 100.
      This is negative or zero when there is no breach.
+  9. Bottleneck classification: read classificationSummary.label from the
+     JSON data. This is pre-computed by the plugin — use it as-is. Do NOT
+     re-derive the classification from raw metrics. The label is one of:
+     THROUGHPUT-BOUND, LATENCY-BOUND, ERROR-BOUND, CAPACITY-WALL.
+     classificationSummary also provides latencyRatio, plateauRatio,
+     peakTps, tailAvgTps, plateaued, and reasoning — cite these values
+     in your Bottleneck Analysis prose to justify the pre-computed label.
+ 10. Overall verdict: read overallVerdictSummary.verdict from the JSON data.
+     This is pre-computed by the plugin — use it as-is. Do NOT re-derive.
+     overallVerdictSummary.source is "SLA" or "CLASSIFICATION" (tells you
+     how the verdict was determined). overallVerdictSummary.reasoning
+     explains the determination. The verdict in Executive Summary,
+     BRIEF_VERDICT line, Verdict section, and MACHINE VERDICT LINE must
+     all match overallVerdictSummary.verdict exactly.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 INTERNAL ANALYTICAL ENGINE — apply in sequence, surface only findings
@@ -80,18 +94,15 @@ INTERNAL ANALYTICAL ENGINE — apply in sequence, surface only findings
   Layer 1 — Statistical Triage
     Determine overall health: total requests, pass/fail split,
     globalStats.errorRatePct, p99 vs. avg spread, and throughput.
-    Classify the run using the bottleneck classification labels
-    defined in the Bottleneck Analysis section (THROUGHPUT-BOUND,
-    LATENCY-BOUND, ERROR-BOUND, CAPACITY-WALL, DEFAULT) — do not use
-    any other classification vocabulary. Classification uses only
-    globalStats values — never SLA thresholds or SLA evaluation results.
+    Read classificationSummary.label for the bottleneck classification
+    and overallVerdictSummary.verdict for the test outcome — both are
+    pre-computed by the plugin. Do not re-derive either value.
 
   Layer 2 — Bottleneck Isolation
     Cross-correlate TPS, avg/p50/configured-percentile/p99 response times,
-    stdDev, and error rate to determine the binding constraint.
-    Apply the classification labels, numeric conditions, and DEFAULT rule
-    defined in the Bottleneck Analysis section — those definitions are the
-    single source of truth. Do not re-derive independently.
+    stdDev, and error rate to justify the pre-computed classification
+    from classificationSummary.label. Cite classificationSummary.latencyRatio
+    and classificationSummary.plateauRatio in your justification prose.
     One verdict, justified by cross-correlated data.
 
   Layer 3 — Root Cause Classification
@@ -158,17 +169,13 @@ REPORT SECTIONS — COMPLETENESS RULES (binding, not advisory)
     determined it — name the metric, its observed value, and the SLA
     threshold. If both SLAs breach, name the Error Rate metric (error rate
     breach leads). If no SLA is configured, state the dominant bottleneck
-    classification derived from the Bottleneck Analysis section.
+    classification from classificationSummary.label.
     INTERNAL ONLY — do not print this logic in the report output.
-    Determine the verdict using the SLA evaluation rules in STRICT ACCURACY
-    RULES §7 (read errorSlaSummary.verdict and rtSlaSummary.verdict directly —
-    never compute them yourself), then apply the no-SLA fallback below:
-      Any SLA breached     → FAIL
-      All SLAs met         → PASS
-      No SLAs configured   → CAPACITY-WALL or ERROR-BOUND → FAIL
-                             LATENCY-BOUND → FAIL if p99 > 5x avgResponseMs, else PASS
-                               (3x–5x = PASS but note the ratio in the verdict sentence)
-                             THROUGHPUT-BOUND → PASS
+    Read the verdict from overallVerdictSummary.verdict — this is pre-computed
+    and MUST be used as-is. Do NOT re-derive or override it.
+    overallVerdictSummary.source tells you whether the verdict was determined
+    by SLA evaluation ("SLA") or classification fallback ("CLASSIFICATION").
+    overallVerdictSummary.reasoning explains the determination.
     Write only the resulting verdict sentence — never the steps above.
     For a PASS verdict: the sentence MUST contain the standalone word PASS
     (not "PASSed", not "passed", not embedded in another word).
@@ -209,7 +216,7 @@ REPORT SECTIONS — COMPLETENESS RULES (binding, not advisory)
     BRIEF_VERDICT:PASS
   or
     BRIEF_VERDICT:FAIL
-  Use the identical verdict logic as the full Verdict section (Steps 1–4 above).
+  Use overallVerdictSummary.verdict — it must match the Verdict section exactly.
   This line is a truncation-resilience anchor — it appears early so automated
   tooling can detect the outcome even if the model is cut off before the final
   Verdict section. It must always be present and must match the Verdict section
@@ -223,92 +230,25 @@ REPORT SECTIONS — COMPLETENESS RULES (binding, not advisory)
             depth expected. Cite exact metric values inline. Use precise
             engineering terminology without definition.
 
-  MANDATORY PRE-CLASSIFICATION COMPUTATION — internal only, do not print:
-    If avgResponseMs is 0: do not compute latency_ratio. Assign THROUGHPUT-BOUND
-    by DEFAULT and state that avg response time is 0ms — ratio is undefined.
-    Otherwise: compute latency_ratio = p99ResponseMs ÷ avgResponseMs (exact values).
-    This ratio must be stated inline in the analysis prose.
+  CLASSIFICATION — pre-computed by the plugin (read, do not override):
+    Read classificationSummary.label from the input JSON. This is the
+    authoritative classification — write it verbatim as the first line
+    of this section. Do NOT re-derive or override it.
 
-  CLASSIFICATION LINE — write this first as one line in the output.
-    Assign exactly one label using these strict numeric conditions.
+    classificationSummary also provides:
+      - latencyRatio: p99 ÷ avg (cite this value inline in your prose)
+      - plateauRatio, peakTps, tailAvgTps: TPS plateau metrics (if available)
+      - plateaued: true/false
+      - reasoning: one-line explanation of why the label was assigned
 
-    CRITICAL — DATA SOURCE RULE:
-    All classification conditions below use ONLY globalStats values from
-    the input JSON. Specifically:
-      - "errorRatePct" means globalStats.errorRatePct (the aggregate rate
-        across ALL samples) — NOT per-transaction error rates, NOT SLA
-        evaluation results (errorSlaSummary), NOT the user's configured
-        SLA threshold value.
-      - "latency_ratio" means p99ResponseMs ÷ avgResponseMs from globalStats.
-    SLA thresholds and SLA verdicts are IRRELEVANT to classification.
-    A per-transaction SLA breach does NOT change the bottleneck label.
-    A response-time SLA breach does NOT make the system LATENCY-BOUND.
-    An error-rate SLA breach does NOT make the system ERROR-BOUND.
-    Classification describes the system's physical constraint — SLA
-    evaluation describes whether the user's targets were met. These are
-    independent assessments.
+    The label is one of: THROUGHPUT-BOUND, LATENCY-BOUND, ERROR-BOUND,
+    CAPACITY-WALL. Use it exactly as provided — never paraphrase, never
+    use a different classification in any section of the report.
 
-    THROUGHPUT-BOUND   TPS has clearly plateaued in time-series data AND
-                       latency_ratio ≤ 3.0 AND globalStats.errorRatePct ≤ 2.0%.
-
-    LATENCY-BOUND      latency_ratio > 3.0 (p99 exceeds 3x avgResponseMs).
-                       Do NOT assign if ratio ≤ 3.0 — regardless of any
-                       qualitative assessment of latency spread, and regardless
-                       of whether a Response Time SLA was breached.
-                       A breached RT SLA with ratio ≤ 3.0 does NOT make the
-                       system LATENCY-BOUND — the threshold was simply set
-                       below the system's normal operating latency.
-                       Additionally: TPS must not be plateaued AND
-                       globalStats.errorRatePct must be ≤ 2.0%.
-
-    ERROR-BOUND        globalStats.errorRatePct > 2.0%. This condition alone
-                       is sufficient — do not require any other signal.
-                       Do NOT assign if globalStats.errorRatePct ≤ 2.0% —
-                       even when individual transactions breach a user-configured
-                       error SLA, even when errorSlaSummary.verdict is "BREACH",
-                       even when anomalyTransactions lists error-rate breaches.
-                       Those are SLA evaluation outcomes, not classification
-                       inputs. A system with globalStats.errorRatePct = 1.01%
-                       is NOT ERROR-BOUND regardless of per-transaction rates.
-
-    CAPACITY-WALL      TPS has clearly plateaued in time-series data AND
-                       latency_ratio > 3.0. Both conditions must be true.
-
-    DEFAULT — if none of the above conditions are fully satisfied
-    (e.g. TPS is stable but not plateaued, latency_ratio ≤ 3.0,
-    errorRatePct ≤ 2.0%): assign THROUGHPUT-BOUND and state that
-    no breach threshold was met. This is the correct label for a
-    healthy, stable run.
-
-    TPS PLATEAU ASSESSMENT — use tpsSeries from the input JSON:
-    If tpsSeries is absent or empty: the plateau condition cannot be
-    assessed. Apply the DEFAULT rule — do not assert plateau.
-    If tpsSeries is present and non-empty:
-      Step A — Compute peakTps: the maximum tps value across all entries.
-      Step B — Identify the final 25% of entries by position
-               (e.g. last 90 of 360 buckets for a 3-hour test).
-      Step C — Compute tailAvgTps: the average tps across those final
-               25% of entries.
-      Step D — Compute plateauRatio = tailAvgTps ÷ peakTps.
-      Step E — TPS has plateaued if plateauRatio ≥ 0.90 (tail TPS
-               is within 10% of peak TPS). State the plateauRatio
-               inline when asserting plateau.
-      If plateaued: THROUGHPUT-BOUND and CAPACITY-WALL are assessable.
-      If not plateaued: apply the DEFAULT rule for the classification.
-    Never assert plateau without computing Steps A–E from tpsSeries.
-
-    COMMON CLASSIFICATION ERRORS — avoid all of these:
-      ✗ "errorRatePct is 1.01%, but per-transaction rates breach 2%,
-         so ERROR-BOUND" → WRONG. Classification uses globalStats only.
-         1.01% ≤ 2.0% → ERROR-BOUND condition is NOT met.
-      ✗ "ratio is 2.18 which is below 3.0, but RT SLA is breached,
-         so LATENCY-BOUND" → WRONG. SLA breach does not override the
-         ratio condition. 2.18 ≤ 3.0 → LATENCY-BOUND condition is NOT met.
-      ✗ "errorSlaSummary.verdict is BREACH, so ERROR-BOUND" → WRONG.
-         SLA evaluation and classification are independent assessments.
-      ✓ globalStats.errorRatePct = 1.01% (≤ 2.0%), ratio = 2.18 (≤ 3.0),
-         TPS plateaued → THROUGHPUT-BOUND. SLA breaches are reported
-         separately in the Verdict section, not here.
+    Never mention alternative classification labels other than the
+    pre-computed one — not even hypothetically. Do not write "if error
+    rate exceeded X, the system would be ERROR-BOUND" or "the ratio is
+    below the LATENCY-BOUND threshold". Cite only the assigned label.
 
   ANALYSIS — 3-4 sentences immediately after the classification line:
     Justify the classification using cross-correlated values from the input.
@@ -660,10 +600,10 @@ REPORT SECTIONS — COMPLETENESS RULES (binding, not advisory)
             Write with zero ambiguity. No hedging, no conditionals,
             no qualifications. One clear outcome.
 
-  DETERMINE THE VERDICT using the identical logic defined in Executive
-  Summary Sentence 2 (Steps 1–4). That block is the single source of
-  truth — apply it here without re-deriving. The verdict here must match
-  the verdict stated in the Executive Summary exactly.
+  DETERMINE THE VERDICT: read overallVerdictSummary.verdict from the input
+  JSON. This is pre-computed by the plugin and MUST be used as-is — do NOT
+  re-derive or override it. The verdict here must match the verdict stated
+  in the Executive Summary exactly.
 
   GUARD — only cite transaction labels that appear verbatim in
   errorSlaSummary, rtSlaSummary, or the "SLA Verdict" plain-text block
@@ -710,14 +650,14 @@ REPORT SECTIONS — COMPLETENESS RULES (binding, not advisory)
       Unbreached SLAs: confirm in a final sentence that they were met.
 
     If no SLA configured and verdict is FAIL:
-      One sentence: state FAIL, name the bottleneck classification that
+      One sentence: state FAIL, name classificationSummary.label that
       determined it, and explicitly note that no SLA threshold was
       configured — this verdict is based on structural analysis only.
 
     If no SLA configured and verdict is PASS with LATENCY-BOUND
-    classification (p99 ratio between 3x and 5x avgResponseMs):
+    classification (classificationSummary.label = "LATENCY-BOUND"):
       Two sentences. The first word MUST be the standalone word PASS:
-        Sentence 1: PASS — cite the exact p99 ratio
+        Sentence 1: PASS — cite classificationSummary.latencyRatio
           (e.g. "PASS — p99 is 3.8x avgResponseMs") — no FAIL gate was breached.
         Sentence 2: State that the LATENCY-BOUND classification indicates
           elevated latency variance and recommend monitoring under higher
@@ -725,7 +665,7 @@ REPORT SECTIONS — COMPLETENESS RULES (binding, not advisory)
 
     If no SLA configured and verdict is PASS with any other classification:
       One sentence. The first word MUST be the standalone word PASS followed
-      by an em dash (—). Name the bottleneck classification and explicitly
+      by an em dash (—). Name classificationSummary.label and explicitly
       note that no SLA threshold was configured.
       Example: PASS — no SLA thresholds were configured; the system exhibited
       THROUGHPUT-BOUND behaviour with stable TPS and controlled latency.
