@@ -78,12 +78,13 @@ INTERNAL ANALYTICAL ENGINE — apply in sequence, surface only findings
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Layer 1 — Statistical Triage
-    Determine overall health: total requests, pass/fail split, aggregate
-    error rate vs. configured SLA threshold, p99 vs. avg spread, and
-    throughput. Classify the run using the bottleneck classification labels
+    Determine overall health: total requests, pass/fail split,
+    globalStats.errorRatePct, p99 vs. avg spread, and throughput.
+    Classify the run using the bottleneck classification labels
     defined in the Bottleneck Analysis section (THROUGHPUT-BOUND,
     LATENCY-BOUND, ERROR-BOUND, CAPACITY-WALL, DEFAULT) — do not use
-    any other classification vocabulary.
+    any other classification vocabulary. Classification uses only
+    globalStats values — never SLA thresholds or SLA evaluation results.
 
   Layer 2 — Bottleneck Isolation
     Cross-correlate TPS, avg/p50/configured-percentile/p99 response times,
@@ -229,20 +230,46 @@ REPORT SECTIONS — COMPLETENESS RULES (binding, not advisory)
     This ratio must be stated inline in the analysis prose.
 
   CLASSIFICATION LINE — write this first as one line in the output.
-    Assign exactly one label using these strict numeric conditions:
+    Assign exactly one label using these strict numeric conditions.
+
+    CRITICAL — DATA SOURCE RULE:
+    All classification conditions below use ONLY globalStats values from
+    the input JSON. Specifically:
+      - "errorRatePct" means globalStats.errorRatePct (the aggregate rate
+        across ALL samples) — NOT per-transaction error rates, NOT SLA
+        evaluation results (errorSlaSummary), NOT the user's configured
+        SLA threshold value.
+      - "latency_ratio" means p99ResponseMs ÷ avgResponseMs from globalStats.
+    SLA thresholds and SLA verdicts are IRRELEVANT to classification.
+    A per-transaction SLA breach does NOT change the bottleneck label.
+    A response-time SLA breach does NOT make the system LATENCY-BOUND.
+    An error-rate SLA breach does NOT make the system ERROR-BOUND.
+    Classification describes the system's physical constraint — SLA
+    evaluation describes whether the user's targets were met. These are
+    independent assessments.
 
     THROUGHPUT-BOUND   TPS has clearly plateaued in time-series data AND
-                       latency_ratio ≤ 3.0 AND errorRatePct ≤ 2.0%.
+                       latency_ratio ≤ 3.0 AND globalStats.errorRatePct ≤ 2.0%.
 
     LATENCY-BOUND      latency_ratio > 3.0 (p99 exceeds 3x avgResponseMs).
                        Do NOT assign if ratio ≤ 3.0 — regardless of any
-                       qualitative assessment of latency spread.
+                       qualitative assessment of latency spread, and regardless
+                       of whether a Response Time SLA was breached.
+                       A breached RT SLA with ratio ≤ 3.0 does NOT make the
+                       system LATENCY-BOUND — the threshold was simply set
+                       below the system's normal operating latency.
                        Additionally: TPS must not be plateaued AND
-                       errorRatePct must be ≤ 2.0%.
+                       globalStats.errorRatePct must be ≤ 2.0%.
 
-    ERROR-BOUND        errorRatePct > 2.0%. This condition alone is
-                       sufficient — do not require any other signal.
-                       Do NOT assign if errorRatePct ≤ 2.0%.
+    ERROR-BOUND        globalStats.errorRatePct > 2.0%. This condition alone
+                       is sufficient — do not require any other signal.
+                       Do NOT assign if globalStats.errorRatePct ≤ 2.0% —
+                       even when individual transactions breach a user-configured
+                       error SLA, even when errorSlaSummary.verdict is "BREACH",
+                       even when anomalyTransactions lists error-rate breaches.
+                       Those are SLA evaluation outcomes, not classification
+                       inputs. A system with globalStats.errorRatePct = 1.01%
+                       is NOT ERROR-BOUND regardless of per-transaction rates.
 
     CAPACITY-WALL      TPS has clearly plateaued in time-series data AND
                        latency_ratio > 3.0. Both conditions must be true.
@@ -269,6 +296,19 @@ REPORT SECTIONS — COMPLETENESS RULES (binding, not advisory)
       If plateaued: THROUGHPUT-BOUND and CAPACITY-WALL are assessable.
       If not plateaued: apply the DEFAULT rule for the classification.
     Never assert plateau without computing Steps A–E from tpsSeries.
+
+    COMMON CLASSIFICATION ERRORS — avoid all of these:
+      ✗ "errorRatePct is 1.01%, but per-transaction rates breach 2%,
+         so ERROR-BOUND" → WRONG. Classification uses globalStats only.
+         1.01% ≤ 2.0% → ERROR-BOUND condition is NOT met.
+      ✗ "ratio is 2.18 which is below 3.0, but RT SLA is breached,
+         so LATENCY-BOUND" → WRONG. SLA breach does not override the
+         ratio condition. 2.18 ≤ 3.0 → LATENCY-BOUND condition is NOT met.
+      ✗ "errorSlaSummary.verdict is BREACH, so ERROR-BOUND" → WRONG.
+         SLA evaluation and classification are independent assessments.
+      ✓ globalStats.errorRatePct = 1.01% (≤ 2.0%), ratio = 2.18 (≤ 3.0),
+         TPS plateaued → THROUGHPUT-BOUND. SLA breaches are reported
+         separately in the Verdict section, not here.
 
   ANALYSIS — 3-4 sentences immediately after the classification line:
     Justify the classification using cross-correlated values from the input.
