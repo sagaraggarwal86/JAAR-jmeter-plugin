@@ -12,14 +12,11 @@ runtime overhead.
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
-- [Table Columns](#table-columns)
 - [Filter Settings](#filter-settings)
 - [SLA Thresholds](#sla-thresholds)
-- [Delimiter Detection](#delimiter-detection)
 - [AI Performance Report](#ai-performance-report)
 - [Local LLM Support](#local-llm-support)
 - [CLI Mode](#cli-mode)
-- [CSV Export](#csv-export)
 - [Running Tests](#running-tests)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
@@ -90,8 +87,8 @@ runtime overhead.
    Set at least one provider's `api.key` to enable the AI report feature:
    ```properties
    ai.reporter.mistral.api.key=          ← Recommended (free, high limits)
-   ai.reporter.groq.api.key=
    ai.reporter.cerebras.api.key=
+   ai.reporter.gemini.api.key=
    ai.reporter.openai.api.key=
    ai.reporter.claude.api.key=
    ```
@@ -116,32 +113,6 @@ cp target/jaar-jmeter-plugin-*.jar $JMETER_HOME/lib/ext/
 3. The metrics table populates immediately
 4. Adjust filters as needed — the table updates without re-browsing
 
-<img src="docs/Image.jpg" alt="JAAR — JTL AI Analysis & Reporting plugin UI" width="500">
-
----
-
-## Table Columns
-
-| Column               | Description                                    |
-|----------------------|------------------------------------------------|
-| **Transaction Name** | Sampler label — always visible                 |
-| **Count**            | Total number of samples                        |
-| **Passed**           | Count of successful samples                    |
-| **Failed**           | Count of failed samples                        |
-| **Avg (ms)**         | Mean response time                             |
-| **Min (ms)**         | Fastest recorded response                      |
-| **Max (ms)**         | Slowest recorded response                      |
-| **Pnn (ms)**         | Configurable percentile column (default: P90)  |
-| **Std. Dev.**        | Standard deviation of response times           |
-| **Error Rate**       | Percentage of failed samples                   |
-| **TPS**              | Transactions per second (throughput)           |
-| **KB/Sec**           | Received bandwidth in kilobytes per second     |
-| **Avg Bytes**        | Average response size in bytes per sample      |
-
-All columns are **sortable** — click the header to sort ascending, click again for descending, click a third time to reset.
-
-Use **Select Columns ▼** to show or hide any column except Transaction Name.
-
 ---
 
 ## Filter Settings
@@ -150,15 +121,6 @@ Use **Select Columns ▼** to show or hide any column except Transaction Name.
 
 Offsets let you focus analysis on the steady-state portion of a test by excluding ramp-up and
 ramp-down samples. Both values are in seconds, measured from the first sample in the JTL file.
-
-```
-Test timeline:  0s────5s────────────25s────30s
-All samples:    xxxxxx|=============|xxxxxx
-                ^skip  ^included     ^skip
-
-Start Offset = 5   →  skip samples before 5s from test start
-End Offset   = 25  →  skip samples after 25s from test start
-```
 
 | Start Offset | End Offset | Behaviour                                       |
 |--------------|------------|-------------------------------------------------|
@@ -171,7 +133,7 @@ End Offset   = 25  →  skip samples after 25s from test start
 
 ### Transaction Names
 
-Filter the results table by typing in the **Transaction Names** field. A dropdown next to the RegEx checkbox controls the filter mode.
+Filter the results table by typing in the **Transaction Names** field.
 
 | Mode                     | Behaviour                        | Example                          |
 |--------------------------|----------------------------------|----------------------------------|
@@ -180,27 +142,18 @@ Filter the results table by typing in the **Transaction Names** field. A dropdow
 
 | Filter Mode              | Behaviour                                                                    |
 |--------------------------|------------------------------------------------------------------------------|
-| **Include** (default)    | Show only transactions matching the pattern (existing behaviour)             |
+| **Include** (default)    | Show only transactions matching the pattern                                  |
 | **Exclude**              | Hide transactions matching the pattern — all non-matching rows are shown     |
-
-When the field is blank, all transactions are shown regardless of the selected mode.
-
-> Invalid regex patterns are silently ignored — the table shows no matches rather than throwing an error.
-
-### Test Time Info
-
-Start Date/Time, End Date/Time, and Duration are displayed automatically after loading a JTL file, based on the first and last included samples within the active offset window.
 
 ### Chart Interval
 
-The **Chart Interval (s, 0=auto)** field controls the time-bucket width used for performance
-charts in the AI report.
+The **Chart Interval (s, 0=auto)** field controls the time-bucket width for performance charts.
 
-| Value | Behaviour                                                                                        |
-|-------|--------------------------------------------------------------------------------------------------|
-| `0`   | Auto — dynamically selects an interval based on test duration, targeting ~120 chart data points. A 3-hour test uses 2-minute buckets; a 30-minute test uses 15-second buckets. |
-| `10`  | Each chart data point represents a 10-second window                                              |
-| `60`  | Each chart data point represents a 1-minute window                                               |
+| Value | Behaviour                                                                        |
+|-------|----------------------------------------------------------------------------------|
+| `0`   | Auto — dynamically selects an interval based on test duration (~120 data points) |
+| `10`  | Each chart data point represents a 10-second window                              |
+| `60`  | Each chart data point represents a 1-minute window                               |
 
 Valid range: 0–3600 seconds.
 
@@ -216,53 +169,7 @@ Set live SLA thresholds in the **SLA Thresholds** panel. Breaching cells are hig
 | **Error %**       | Highlight Error Rate cells exceeding this value (1–99)                                        |
 | **Response Time** | Choose **Avg (ms)** or **Pnn (ms)** from the dropdown, then enter a threshold in milliseconds |
 
-- The TOTAL row is never highlighted regardless of values.
-- Leave a field blank to disable that threshold.
-
----
-
-## Delimiter Detection
-
-The plugin automatically reads the JTL field delimiter from JMeter's properties files. This
-allows parsing of JTL files generated with non-default delimiters (`;`, `|`, `\t`, etc.).
-
-### Resolution Order (highest priority first)
-
-| Priority | Source                                          |
-|----------|-------------------------------------------------|
-| 1        | `<JMETER_HOME>/bin/user.properties`             |
-| 2        | `<JMETER_HOME>/bin/jmeter.properties`           |
-| 3        | Default: `,` (standard CSV)                     |
-
-The plugin looks for the standard JMeter property:
-
-```properties
-jmeter.save.saveservice.default_delimiter=;
-```
-
-- Commented-out lines (`#jmeter.save.saveservice.default_delimiter=;`) are ignored.
-- If the property appears in both files, `user.properties` takes priority.
-- Tab-delimited JTLs are supported via `\t` as the property value.
-- If neither file contains an active value, the default comma delimiter is used.
-
-> **Note:** The delimiter setting must match the format of the JTL file being loaded. Loading a comma-delimited JTL with a semicolon delimiter configured will produce incorrect results.
-
----
-
-## CSV Export
-
-1. Click **Save Table Data** at the bottom of the panel.
-2. Choose a save location — the default filename is `aggregate_report.csv`.
-3. Only **currently visible columns** are exported (header row is always included).
-
-When SLA thresholds are configured, two additional columns are appended to the CSV:
-
-| Column         | Values                                                        |
-|----------------|---------------------------------------------------------------|
-| **Error% SLA** | `PASS` (within threshold), `FAIL` (breach), or `-` (disabled / TOTAL row) |
-| **RT SLA**     | `PASS` (within threshold), `FAIL` (breach), or `-` (disabled / TOTAL row) |
-
-If no SLA thresholds are set, the CSV contains only the visible data columns — no extra columns are added.
+The TOTAL row is never highlighted. Leave a field blank to disable that threshold.
 
 ---
 
@@ -271,63 +178,53 @@ If no SLA thresholds are set, the CSV contains only the visible data columns —
 Click **Generate AI Report** to analyse the loaded JTL data with any supported AI provider.
 A save dialog lets you choose where to save the self-contained HTML report.
 
-**Supported providers:** Mistral (free, **Recommended**), Groq (free), Gemini (free), DeepSeek (free),
+**Supported providers:** Mistral (free, **recommended**), Groq (free), Gemini (free), DeepSeek (free),
 Cerebras (free), OpenAI (paid), Claude (paid), Ollama (local / free) — or any OpenAI-compatible endpoint.
 
-### Report Contents
+### Pre-Computed Analysis
+
+The plugin pre-computes several analytical results in Java before sending data to the AI provider. This ensures deterministic, accurate outputs regardless of which AI model is used:
+
+| Pre-Computed Field         | Description                                                             |
+|----------------------------|-------------------------------------------------------------------------|
+| `classificationSummary`    | Bottleneck classification (THROUGHPUT-BOUND, LATENCY-BOUND, ERROR-BOUND, CAPACITY-WALL) with latency ratio, plateau ratio, and reasoning |
+| `overallVerdictSummary`    | Final PASS/FAIL verdict combining SLA results with classification fallback |
+| `errorSlaSummary`          | Per-transaction error rate SLA evaluation with worst transaction and breach details |
+| `rtSlaSummary`             | Per-transaction response time SLA evaluation with worst transaction and breach details |
+
+The AI provider's role is to write analytical prose that justifies and explains the pre-computed results — it never computes the classification, verdict, or SLA outcomes itself.
+
+### Report Sections
 
 | Section                   | Description                                                    |
 |---------------------------|----------------------------------------------------------------|
-| Executive Summary         | Scenario overview, PASS/FAIL verdict, and top recommendation   |
-| Bottleneck Analysis       | Throughput, latency, and error pattern with classification     |
+| Executive Summary         | Scenario overview, PASS/FAIL verdict, and binding constraint   |
+| Bottleneck Analysis       | Pre-computed classification with throughput/latency/error evidence |
 | Error Analysis            | Failure mode characterisation and SLA threshold verdict        |
 | Advanced Web Diagnostics  | Response time breakdown by network, server, and transfer phase |
 | Root Cause Hypotheses     | Ranked list of probable causes with supporting metric evidence |
 | Recommendations           | Prioritised action table mapped to root cause findings         |
-| Verdict                   | Single PASS or FAIL outcome anchored to the decisive metric    |
-| Transaction Metrics Table | Full per-transaction breakdown                                 |
+| Verdict                   | Single PASS or FAIL outcome from pre-computed verdict          |
+| Transaction Metrics Table | Full per-transaction breakdown with SLA status                 |
 | Performance Charts        | Response time, error rate, throughput, and bandwidth over time |
 
-### Truncation Detection and Missing Sections
+### Truncation Handling
 
-The plugin automatically detects and surfaces two types of report quality issues in the HTML output:
+When the AI provider hits its token limit before completing all 7 sections, the plugin detects this
+and appends a notice identifying which sections were completed and which were not reached:
 
-**1. Partial report — truncation caused missing sections**
-
-When the AI provider hits its token limit before completing all 7 sections, a consolidated notice names exactly which sections were completed and which were not reached, and recommends switching to a provider with a higher output limit:
-
-> **⚠ Partial report — Gemini (Free) reached its output limit**
+> **⚠ Partial report — reached its output limit**
 >
-> **Sections completed:** Executive Summary, Bottleneck Analysis, Error Analysis, Advanced Web Diagnostics, Root Cause Hypotheses, Recommendations
+> **Sections completed:** Executive Summary, Bottleneck Analysis, Error Analysis
 >
-> **Sections not reached:** Verdict
+> **Sections not reached:** Advanced Web Diagnostics, Root Cause Hypotheses, Recommendations, Verdict
 >
-> The SLA verdict and transaction metrics above are accurate regardless of the missing sections. For a complete report, regenerate using **Cerebras** or **Mistral** — both providers handle this dataset within their output limits.
+> The SLA verdict and transaction metrics above are accurate regardless of the missing sections.
+> To get a complete report, try regenerating or increase `max.tokens` for this provider in `ai-reporter.properties`.
 
-**2. Simple truncation — content cut mid-section**
-
-When truncation cuts off content inside the last section (all headings present but content incomplete), a shorter notice is shown:
-
-> **⚠ Report truncated** — The Mistral (Free) response was cut off before completing the last section. All section headings are present but the final section may be incomplete. To get a fully complete report, try regenerating or switch to **Cerebras** or **Mistral**.
-
-**3. Missing sections — model skipped a section**
-
-If a model silently skips a section without being truncated, a separate notice identifies the missing sections and recommends regenerating or switching providers.
-
-The plugin detects truncation via two signals — the standard `finish_reason: "length"` field, and a fallback check of `usage.completion_tokens >= max_tokens` for providers (such as Gemini) that return `finish_reason: "stop"` even when the token limit was hit.
-
-The default `max_tokens` for all providers is **8192**. If you see truncation warnings, you have two options:
-
-- **Switch provider** — Mistral and Cerebras handle large datasets reliably within the 8192 default. `gemini-2.5-flash` has also been shown to complete full reports within 8192 tokens.
-- **Increase the limit** — raise `max_tokens` for the affected provider in `ai-reporter.properties` (no restart needed):
-
-```properties
-ai.reporter.gemini.max.tokens=16000
-```
-
-Gemini models on older API versions (`gemini-2.0-flash`) tend to be more verbose — `12000–16000` is recommended if truncation occurs with those models.
-
-> **Validated providers:** This plugin has been validated against **Mistral** (`mistral-large-latest`), **Gemini** (`gemini-2.5-flash`), and **Cerebras** (`qwen-3-235b-a22b-instruct-2507`) across 27 test scenarios covering all SLA configurations. All three providers produce complete 7-section reports with 100% verdict accuracy on this workload.
+The plugin detects truncation via two signals — `finish_reason: "length"` and a fallback check of
+`usage.completion_tokens >= max_tokens`. The SLA verdict, classification, and transaction metrics
+are always accurate regardless of truncation — they are computed in Java, not by the AI.
 
 ### API Key Setup
 
@@ -344,9 +241,8 @@ ai.reporter.openai.api.key=sk-your-key-here
 ai.reporter.claude.api.key=sk-ant-your-key-here
 ```
 
-Select the provider from the dropdown next to the **Generate AI Report** button. Click **Reload** to refresh the provider list after editing `ai-reporter.properties` — no restart needed.
-
-> **Tip:** The dropdown order and free/paid labels are configurable via `ai.reporter.order` and `ai.reporter.<key>.tier` in `ai-reporter.properties` — no rebuild required.
+Select the provider from the dropdown next to the **Generate AI Report** button. Click **Reload** to
+refresh the provider list after editing `ai-reporter.properties` — no restart needed.
 
 ---
 
@@ -358,32 +254,28 @@ cloud AI providers. No API key, no internet connection required after model down
 ### Setup
 
 1. **Install Ollama** from [https://ollama.com](https://ollama.com) (Windows / macOS / Linux).
-   Ollama starts automatically as a local service on `http://localhost:11434`.
 
 2. **Pull a model:**
-
    ```bash
-   ollama pull llama3.2       # ~2 GB — fast, good quality
+   ollama pull qwen2.5:7b     # ~5 GB — recommended for analytical tasks
    ollama pull mistral        # ~4 GB — strong reasoning
-   ollama pull qwen2.5:7b     # ~5 GB — strong analytical reasoning (recommended)
+   ollama pull llama3.2       # ~2 GB — fast, good quality
    ```
 
 3. **Add an Ollama block to `ai-reporter.properties`:**
-
    ```properties
    ai.reporter.ollama.api.key=ollama
-   ai.reporter.ollama.model=llama3.2
+   ai.reporter.ollama.model=qwen2.5:7b
    ai.reporter.ollama.base.url=http://localhost:11434/v1
-   ai.reporter.ollama.timeout.seconds=120
+   ai.reporter.ollama.timeout.seconds=180
    ai.reporter.ollama.max.tokens=8192
    ai.reporter.ollama.temperature=0.3
    ```
 
-   > **Note:** `api.key` must be non-blank — use any dummy value such as `ollama`.
-
 4. Select **ollama** from the provider dropdown and click **Generate AI Report**.
 
-For best output quality use `qwen2.5:7b` or `mistral`. On CPU-only machines set `timeout.seconds=180` or higher — generation can take 1–3 minutes. Ensure at least 8 GB RAM free before pulling a 7B model. `--provider ollama` works identically to any cloud provider in CLI mode.
+On CPU-only machines, set `timeout.seconds=180` or higher — generation can take 1–3 minutes.
+Ensure at least 8 GB RAM free before pulling a 7B model.
 
 ---
 
@@ -398,21 +290,15 @@ Copy the wrapper scripts to your JMeter `bin/` directory:
 ```
 <JMETER_HOME>/bin/jaar-cli-report.bat    ← Windows
 <JMETER_HOME>/bin/jaar-cli-report.sh     ← macOS / Linux
-<JMETER_HOME>/lib/ext/jaar-jmeter-plugin-<version>.jar  ← already installed
 ```
-
-The scripts auto-detect the JMeter installation from their own location — no environment
-variables needed.
 
 ### Quick Start
 
-**Windows:**
-```cmd
-jaar-cli-report.bat -i results.jtl --provider mistral --config ai-reporter.properties
-```
-
-**macOS / Linux:**
 ```bash
+# Windows
+jaar-cli-report.bat -i results.jtl --provider mistral --config ai-reporter.properties
+
+# macOS / Linux
 ./jaar-cli-report.sh -i results.jtl --provider mistral --config ai-reporter.properties
 ```
 
@@ -421,10 +307,8 @@ jaar-cli-report.bat -i results.jtl --provider mistral --config ai-reporter.prope
 ```
 Required:
   -i, --input FILE            JTL file path
-  --provider STRING           provider name, case-insensitive
-                              (mistral, groq, gemini, deepseek, cerebras,
-                               openai, claude, ollama, or any custom key
-                               in ai-reporter.properties)
+  --provider STRING           provider name (mistral, groq, gemini, deepseek,
+                               cerebras, openai, claude, ollama, or custom)
   --config FILE               path to ai-reporter.properties
 
 Output:
@@ -457,51 +341,16 @@ Help:
 
 | Code | Meaning                                          |
 |------|--------------------------------------------------|
-| `0`  | AI verdict **PASS** — pipeline continues         |
-| `1`  | AI verdict **FAIL** — pipeline gate fails        |
-| `2`  | AI verdict **UNDECISIVE** — pipeline continues   |
+| `0`  | AI verdict **PASS**                              |
+| `1`  | AI verdict **FAIL**                              |
+| `2`  | AI verdict **UNDECISIVE**                        |
 | `3`  | Invalid arguments                                |
 | `4`  | JTL parse error                                  |
 | `5`  | AI provider error (key, ping, or API failure)    |
 | `6`  | Report write error                               |
-| `7`  | Unexpected error — full stack trace printed to stderr |
+| `7`  | Unexpected error                                 |
 
-### Notes
-
-**Progress output goes to stderr.** All `[CLI]` progress messages (parsing, pinging, calling AI,
-etc.) are written to `stderr` so that `stdout` stays clean for scripting. Capture stdout only to
-get the report path and verdict:
-
-```bash
-OUTPUT=$(./jaar-cli-report.sh -i results.jtl --provider mistral --config ai-reporter.properties 2>/dev/null)
-REPORT_PATH=$(echo "$OUTPUT" | head -1)
-VERDICT=$(echo "$OUTPUT" | tail -1)
-```
-
-**`--regex` requires `--search`.** Passing `--regex` without `--search` is a validation error
-(exit code `3`). Always pair the two flags:
-
-```bash
---search "Login|Checkout" --regex
-```
-
-**`--exclude` requires `--search`.** Passing `--exclude` without `--search` is a validation error
-(exit code `3`). Use `--exclude` to hide matching transactions from the report:
-
-```bash
-# Exclude all Login transactions
---search "Login" --exclude
-
-# Exclude by regex pattern
---search "^GET.*" --regex --exclude
-```
-
-**SLA thresholds influence AI analysis.** The `--error-sla` and `--rt-sla` values are passed
-directly into the AI analysis prompt. The AI evaluates whether those thresholds were met or
-breached and factors them into its PASS/FAIL verdict. If no SLA args are provided, the AI
-performs a best-effort analysis without a configured threshold reference.
-
-### Example — CI/CD Pipeline
+### CI/CD Pipeline Example
 
 ```bash
 ./jaar-cli-report.sh \
@@ -513,19 +362,9 @@ performs a best-effort analysis without a configured threshold reference.
 
 EXIT_CODE=$?
 if [ $EXIT_CODE -eq 1 ]; then
-  echo "Performance gate FAILED — AI verdict: FAIL"
+  echo "Performance gate FAILED"
   exit 1
-elif [ $EXIT_CODE -eq 2 ]; then
-  echo "Performance gate UNDECISIVE — review report manually"
 fi
-```
-
-To exclude specific transactions from the report:
-
-```bash
-./jaar-cli-report.sh \
-  -i results.jtl --provider mistral --config ai-reporter.properties \
-  --search "HealthCheck|Warmup" --regex --exclude
 ```
 
 On success, two lines are printed to stdout:
@@ -535,19 +374,11 @@ On success, two lines are printed to stdout:
 VERDICT:PASS
 ```
 
-The verdict line is always one of `VERDICT:PASS`, `VERDICT:FAIL`, or `VERDICT:UNDECISIVE`.
-
-> **CI/CD Pipeline Gate:** Use the exit code as a quality gate — exit code `1` (VERDICT:FAIL) fails
-> the build; exit codes `0` (PASS) and `2` (UNDECISIVE) continue. The report path on the first
-> stdout line can be captured and published as a build artifact.
+All `[CLI]` progress messages go to stderr so stdout stays clean for scripting.
 
 ---
 
 ## Running Tests
-
-The test suite contains **450+ unit tests** across 23 test classes covering parsing, prompt
-building, markdown processing, SLA evaluation, HTML rendering, CSV export, CLI argument parsing,
-delimiter resolution, and UI breach highlighting.
 
 ```bash
 # Build and run all tests
@@ -555,86 +386,51 @@ mvn clean verify
 
 # Unit tests only
 mvn test
-
-# Standalone UI preview — no JMeter installation needed
-mvn test-compile exec:java
 ```
 
 ---
 
 ## Troubleshooting
 
-**The AI report is missing sections — Recommendations or Verdict are absent, or a truncation warning appears.**
-The AI provider reached the `max_tokens` limit before finishing the report. A blockquote warning is shown in the report identifying which sections were completed and which were not. You have two options:
-
-- **Switch provider** — Mistral and Cerebras handle large datasets within the default 8192 token limit. `gemini-2.5-flash` also completes full reports reliably within 8192 tokens.
-- **Increase the limit** — raise `max_tokens` for the affected provider in `ai-reporter.properties` (no restart needed):
-
+**The AI report is missing sections or shows a truncation warning.**
+The AI provider reached its `max_tokens` limit. Increase the limit in `ai-reporter.properties`:
 ```properties
-ai.reporter.gemini.max.tokens=16000
+ai.reporter.<provider>.max.tokens=16000
 ```
-Older Gemini models (`gemini-2.0-flash`) tend to be more verbose — `12000–16000` is recommended for those. After saving, regenerate the report.
 
 **The plugin does not appear in JMeter's Add → Listener menu.**
-Verify the JAR is in `<JMETER_HOME>/lib/ext/` and not in `lib/` or any subdirectory.
-Restart JMeter after copying the file.
+Verify the JAR is in `<JMETER_HOME>/lib/ext/`. Restart JMeter after copying.
 
 **The Generate AI Report button is greyed out.**
-The plugin found no configured provider. Verify that `ai-reporter.properties` exists in
-`<JMETER_HOME>/bin/` and that at least one `api.key` value is set.
+No configured provider found. Verify that `ai-reporter.properties` exists in
+`<JMETER_HOME>/bin/` with at least one `api.key` set.
 
 **"No Data" dialog appears when clicking Generate AI Report.**
-No JTL file has been loaded yet. Click **Browse**, select a JTL file, and wait for the table
-to populate before generating the report.
+No JTL file loaded. Click **Browse**, select a JTL file, and wait for the table to populate.
 
-**The HTML report shows "Insufficient data for time-series charts" instead of charts.**
-The test run was too short, or `--start-offset` / `--end-offset` filters excluded most samples,
-leaving fewer than two 30-second time buckets. Try reducing `--start-offset`, or remove the
-offset flags entirely and re-run. For smoke tests under 60 seconds, charts will not render — all
-other report sections (AI analysis, transaction table, verdict) are unaffected.
-
-**Charts in the HTML report are blank (no data, no message).**
-The report requires internet access to load the Chart.js library from a CDN. Open the file in
-Chrome or Firefox on a machine with internet access.
+**Charts are blank in the HTML report.**
+The report loads Chart.js from a CDN. Open the file in a browser with internet access.
 
 **The table shows no rows after loading a JTL file.**
-Check that Start Offset and End Offset are not together excluding all samples. Verify the
-filter mode is set to **Include** (not Exclude with a broad pattern). If the fields
-are blank and the table is still empty, verify the JTL file is a valid CSV and was not
-truncated during the test run.
+Check that Start/End Offset are not excluding all samples. Verify the filter mode is **Include**.
 
-**The table shows one "unknown" row with all zeros after loading a JTL file.**
-The configured delimiter does not match the JTL file's actual format. Check the value of
-`jmeter.save.saveservice.default_delimiter` in `<JMETER_HOME>/bin/jmeter.properties` and
-`user.properties`. If the JTL file uses commas, either remove the property or set it to `,`.
+**The table shows one "unknown" row with all zeros.**
+The configured delimiter does not match the JTL file. Check
+`jmeter.save.saveservice.default_delimiter` in your JMeter properties files.
 
 **The AI report times out.**
-Increase `timeout.seconds` for the provider in `ai-reporter.properties`. The default is
-60 seconds. For large JTL files, 120–180 seconds is recommended. For Ollama on CPU-only
-machines, 180–300 seconds may be required.
+Increase `timeout.seconds` for the provider. Default is 60 seconds; for large JTL files or
+local models, 120–300 seconds is recommended.
 
 **API key rejected — "HTTP 401" error.**
-The `api.key` value in `ai-reporter.properties` is incorrect or has been revoked. Verify the
-key on your provider's dashboard and update the properties file. The plugin re-reads the file
-on every **Generate AI Report** click — no restart needed.
+The `api.key` value is incorrect or revoked. Update it in `ai-reporter.properties` — the plugin
+re-reads the file on every generate click, no restart needed.
 
 **Rate limit exceeded — "HTTP 429" error.**
-The provider's free tier request limit has been reached. Wait a moment and try again, or switch
-to a different provider in the dropdown.
-
-**"HTTP 413" error — request too large (Groq free tier).**
-Groq's free `on_demand` tier has a hard cap of 12,000 tokens per minute. The plugin's system
-prompt combined with your JTL data exceeds this limit. Switch to Mistral (500,000 TPM free) or
-upgrade to the Groq Developer plan. No code changes are needed — just update the provider in
-the dropdown or `--provider` flag.
+Wait a moment and retry, or switch to a different provider in the dropdown.
 
 **Ollama: "Could not connect" error.**
-Ollama is not running. Start it with `ollama serve` (or it starts automatically on most
-installations when you run `ollama pull`). Verify it is reachable at `http://localhost:11434`.
-Also confirm the model you specified in `ai-reporter.properties` has been pulled:
-```bash
-ollama list
-```
+Start Ollama with `ollama serve` and verify it is reachable at `http://localhost:11434`.
 
 ---
 
@@ -649,13 +445,8 @@ Before submitting a pull request:
 - Test manually with JMeter 5.6.3 on your platform
 - Keep each pull request focused on a single change
 
-For questions or feature requests, open a GitHub Issue with as much context as possible —
-JMeter version, OS, and steps to reproduce.
-
 ---
 
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) for details.
-
-![](https://komarev.com/ghpvc/?username=sagaraggarwal86)
