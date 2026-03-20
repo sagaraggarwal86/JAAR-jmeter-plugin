@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.github.sagaraggarwal86</groupId>
     <artifactId>jaar-jmeter-plugin</artifactId>
-    <version>4.5.0</version>
+    <version>4.6.0</version>
     <packaging>jar</packaging>
     <name>JAAR — JTL AI Analysis &amp; Reporting</name>
     <description>JAAR is an AI-powered JMeter listener plugin that analyses load test results and generates intelligent
@@ -271,23 +271,31 @@
                             <excludes>
                                 <!-- Swing GUI classes require a display — excluded
                                      until a headless GUI-test strategy is in place -->
-                                <exclude>com/personal/jmeter/listener/AggregateReportPanel.class</exclude>
-                                <exclude>com/personal/jmeter/listener/AggregateReportPanel$*.class</exclude>
-                                <exclude>com/personal/jmeter/listener/ListenerGUI.class</exclude>
-                                <exclude>com/personal/jmeter/listener/ListenerGUI$*.class</exclude>
-                                <exclude>com/personal/jmeter/listener/ReportPanelBuilder.class</exclude>
-                                <exclude>com/personal/jmeter/listener/ReportPanelBuilder$*.class</exclude>
-                                <exclude>com/personal/jmeter/listener/FilePanelCustomizer.class</exclude>
-                                <exclude>com/personal/jmeter/listener/SlaRowRenderer.class</exclude>
-                                <exclude>com/personal/jmeter/listener/AiReportLauncher.class</exclude>
-                                <exclude>com/personal/jmeter/listener/AiReportLauncher$*.class</exclude>
-                                <exclude>com/personal/jmeter/ai/AiReportCoordinator.class</exclude>
-                                <exclude>com/personal/jmeter/ai/AiReportCoordinator$*.class</exclude>
-                                <exclude>com/personal/jmeter/ai/HtmlPageBuilder.class</exclude>
+                                <exclude>com/personal/jmeter/listener/gui/AggregateReportPanel.class</exclude>
+                                <exclude>com/personal/jmeter/listener/gui/AggregateReportPanel$*.class</exclude>
+                                <exclude>com/personal/jmeter/listener/gui/ListenerGUI.class</exclude>
+                                <exclude>com/personal/jmeter/listener/gui/ListenerGUI$*.class</exclude>
+                                <exclude>com/personal/jmeter/listener/gui/ReportPanelBuilder.class</exclude>
+                                <exclude>com/personal/jmeter/listener/gui/ReportPanelBuilder$*.class</exclude>
+                                <exclude>com/personal/jmeter/listener/gui/FilePanelCustomizer.class</exclude>
+                                <exclude>com/personal/jmeter/listener/core/SlaRowRenderer.class</exclude>
+                                <exclude>com/personal/jmeter/listener/gui/AiReportLauncher.class</exclude>
+                                <exclude>com/personal/jmeter/listener/gui/AiReportLauncher$*.class</exclude>
+                                <exclude>com/personal/jmeter/ai/report/AiReportCoordinator.class</exclude>
+                                <exclude>com/personal/jmeter/ai/report/AiReportCoordinator$*.class</exclude>
+                                <exclude>com/personal/jmeter/ai/report/HtmlPageBuilder.class</exclude>
+                                <!-- HTML report rendering — requires live file system and full render pipeline -->
+                                <exclude>com/personal/jmeter/ai/report/HtmlReportRenderer.class</exclude>
+                                <exclude>com/personal/jmeter/ai/report/HtmlReportRenderer$*.class</exclude>
+                                <!-- Swing/JMeter boilerplate — no testable logic -->
+                                <exclude>com/personal/jmeter/listener/gui/ListenerCollector.class</exclude>
+                                <exclude>com/personal/jmeter/listener/gui/SimpleDocListener.class</exclude>
+                                <!-- Constants-only class — no executable logic -->
+                                <exclude>com/personal/jmeter/listener/core/ColumnIndex.class</exclude>
                                 <!-- Live-network classes — require real AI provider endpoints -->
-                                <exclude>com/personal/jmeter/ai/AiReportService.class</exclude>
-                                <exclude>com/personal/jmeter/ai/AiProviderRegistry.class</exclude>
-                                <exclude>com/personal/jmeter/ai/SharedHttpClient.class</exclude>
+                                <exclude>com/personal/jmeter/ai/provider/AiReportService.class</exclude>
+                                <exclude>com/personal/jmeter/ai/provider/AiProviderRegistry.class</exclude>
+                                <exclude>com/personal/jmeter/ai/provider/SharedHttpClient.class</exclude>
                                 <!-- CLI pipeline — requires live API + full JMeter runtime -->
                                 <exclude>com/personal/jmeter/cli/CliReportPipeline.class</exclude>
                                 <exclude>com/personal/jmeter/cli/CliReportPipeline$*.class</exclude>

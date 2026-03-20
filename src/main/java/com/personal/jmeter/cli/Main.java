@@ -5,8 +5,8 @@ import org.apache.jmeter.util.JMeterUtils;
 import java.io.IOException;
 import java.net.URL;
 
-import com.personal.jmeter.ai.AiProviderException;
-import com.personal.jmeter.ai.AiServiceException;
+import com.personal.jmeter.ai.provider.AiProviderException;
+import com.personal.jmeter.ai.provider.AiServiceException;
 import com.personal.jmeter.parser.JtlParseException;
 
 /**
