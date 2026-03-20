@@ -234,7 +234,7 @@ final class CliArgs {
                   The plugin JAR must be in $JMETER_HOME/lib/ext/.
 
                 Required:
-                  -i, --input FILE            JTL file path
+                  -i, --input FILE            JTL/CSV file path
                   --provider STRING           provider name, case-insensitive
                                               (groq, openai, claude, gemini, mistral, deepseek)
                   --config FILE               path to ai-reporter.properties

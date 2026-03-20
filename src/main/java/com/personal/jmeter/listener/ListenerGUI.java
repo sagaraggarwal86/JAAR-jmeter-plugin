@@ -95,6 +95,7 @@ public class ListenerGUI extends AbstractVisualizer {
         FilePanelCustomizer.hideFilePanelExtras(titlePanel);
         FilePanelCustomizer.overrideBrowseButton(
                 titlePanel, this::getFile, this::setFile, this, this::checkAndLoadFile);
+        FilePanelCustomizer.wireEnterKeyOnFilenameField(titlePanel, this::checkAndLoadFile);
 
         add(reportPanel, BorderLayout.CENTER);
     }

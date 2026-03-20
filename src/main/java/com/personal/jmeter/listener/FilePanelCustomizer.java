@@ -83,8 +83,8 @@ final class FilePanelCustomizer {
                     File startDir = resolveStartDirectory(currentFileFn.get());
                     JFileChooser fc = new JFileChooser(startDir);
                     fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter(
-                            "JTL Files (*.jtl)", "jtl"));
-                    fc.setAcceptAllFileFilterUsed(true);
+                            "JMeter [.jtl, .csv]", "jtl", "csv"));
+                    fc.setAcceptAllFileFilterUsed(false);
                     if (fc.showOpenDialog(ownerComp) == JFileChooser.APPROVE_OPTION) {
                         setFileFn.accept(fc.getSelectedFile().getAbsolutePath());
                         onLoadFn.run();
@@ -94,6 +94,45 @@ final class FilePanelCustomizer {
             }
             if (comp instanceof Container c) {
                 overrideBrowseButton(c, currentFileFn, setFileFn, ownerComp, onLoadFn);
+            }
+        }
+    }
+
+    /**
+     * Wires the ENTER key on the filename text field so pressing ENTER
+     * reloads and repopulates the file without requiring a Browse click.
+     *
+     * <p>Locates the filename field by first finding the Browse button, then
+     * scanning the button's parent container for a sibling {@link JTextField}.
+     * This is more robust than a blind depth-first search, which would
+     * incorrectly target the element-Name or Comments fields that also live
+     * in the title panel.</p>
+     *
+     * <p>{@link JTextField#addActionListener} fires natively on ENTER — no
+     * {@code KeyListener} required.</p>
+     *
+     * @param container root container to search recursively (the title panel)
+     * @param onLoadFn  callback invoked when the user presses ENTER
+     */
+    static void wireEnterKeyOnFilenameField(Container container, Runnable onLoadFn) {
+        for (Component comp : container.getComponents()) {
+            if (comp instanceof JButton btn
+                    && btn.getText() != null
+                    && btn.getText().contains("Browse")) {
+                // Browse button found — filename field is a JTextField sibling
+                Container parent = btn.getParent();
+                if (parent != null) {
+                    for (Component sibling : parent.getComponents()) {
+                        if (sibling instanceof JTextField tf) {
+                            tf.addActionListener(e -> onLoadFn.run());
+                            return;
+                        }
+                    }
+                }
+                return;
+            }
+            if (comp instanceof Container c) {
+                wireEnterKeyOnFilenameField(c, onLoadFn);
             }
         }
     }
