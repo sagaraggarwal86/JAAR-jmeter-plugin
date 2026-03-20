@@ -30,7 +30,8 @@ package com.personal.jmeter.ai;
  */
 public final class MarkdownUtils {
 
-    private MarkdownUtils() {}
+    private MarkdownUtils() {
+    }
 
     // ─────────────────────────────────────────────────────────────
     // Verdict extraction
@@ -151,7 +152,7 @@ public final class MarkdownUtils {
      *
      * @param markdown raw AI-generated markdown; may be null
      * @return markdown with all verdict token lines removed and trailing
-     *         whitespace trimmed; {@code markdown} itself if null or blank
+     * whitespace trimmed; {@code markdown} itself if null or blank
      */
     public static String stripVerdictLine(String markdown) {
         if (markdown == null || markdown.isBlank()) return markdown;
@@ -170,7 +171,7 @@ public final class MarkdownUtils {
             } else {
                 // Check for inline token at end of sentence — strip just the token suffix
                 String stripped_line = raw;
-                for (String token : new String[]{"VERDICT:PASS","VERDICT:FAIL","BRIEF_VERDICT:PASS","BRIEF_VERDICT:FAIL"}) {
+                for (String token : new String[]{"VERDICT:PASS", "VERDICT:FAIL", "BRIEF_VERDICT:PASS", "BRIEF_VERDICT:FAIL"}) {
                     String norm = normalised;
                     if (norm.endsWith(token)) {
                         // Remove the token and any preceding space/punctuation from the raw line
@@ -211,9 +212,9 @@ public final class MarkdownUtils {
         // Strip whitespace first, then markdown emphasis characters from both ends
         String s = raw.trim();
         int start = 0;
-        int end   = s.length();
-        while (start < end && isEmphasisChar(s.charAt(start)))  start++;
-        while (end   > start && isEmphasisChar(s.charAt(end - 1))) end--;
+        int end = s.length();
+        while (start < end && isEmphasisChar(s.charAt(start))) start++;
+        while (end > start && isEmphasisChar(s.charAt(end - 1))) end--;
         return s.substring(start, end);
     }
 

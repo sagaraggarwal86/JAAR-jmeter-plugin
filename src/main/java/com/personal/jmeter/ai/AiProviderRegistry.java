@@ -43,19 +43,6 @@ import java.util.regex.Pattern;
  */
 public final class AiProviderRegistry {
 
-    private static final Logger log = LoggerFactory.getLogger(AiProviderRegistry.class);
-
-    // ── Property key patterns ──────────────────────────────────────────────
-    private static final String PREFIX = "ai.reporter.";
-    private static final Pattern API_KEY_PATTERN =
-            Pattern.compile("^ai\\.reporter\\.([^.]+)\\.api\\.key$");
-
-    // ── Global defaults ────────────────────────────────────────────────────
-    private static final int    DEFAULT_TIMEOUT   = 60;
-    private static final int    DEFAULT_MAX_TOKENS = 8192;
-    private static final double DEFAULT_TEMPERATURE = 0.3;
-
-    // ── Known-provider metadata ────────────────────────────────────────────
     /**
      * Ordered list of known provider keys.  Free providers first, paid last.
      * Groq is always first when configured.
@@ -63,44 +50,54 @@ public final class AiProviderRegistry {
     static final List<String> KNOWN_PROVIDERS = List.of(
             "groq", "gemini", "mistral", "deepseek", "cerebras", "openai", "claude"
     );
+    private static final Logger log = LoggerFactory.getLogger(AiProviderRegistry.class);
+    // ── Property key patterns ──────────────────────────────────────────────
+    private static final String PREFIX = "ai.reporter.";
+    private static final Pattern API_KEY_PATTERN =
+            Pattern.compile("^ai\\.reporter\\.([^.]+)\\.api\\.key$");
+    // ── Global defaults ────────────────────────────────────────────────────
+    private static final int DEFAULT_TIMEOUT = 60;
+    private static final int DEFAULT_MAX_TOKENS = 8192;
 
+    // ── Known-provider metadata ────────────────────────────────────────────
+    private static final double DEFAULT_TEMPERATURE = 0.3;
     private static final Map<String, String> KNOWN_LABELS = Map.of(
-            "groq",      "Groq (Free)",
-            "gemini",    "Gemini (Free)",
-            "mistral",   "Mistral (Free)",
-            "deepseek",  "DeepSeek (Free)",
-            "cerebras",  "Cerebras (Free)",
-            "openai",    "OpenAI (Paid)",
-            "claude",    "Claude (Paid)"
+            "groq", "Groq (Free)",
+            "gemini", "Gemini (Free)",
+            "mistral", "Mistral (Free)",
+            "deepseek", "DeepSeek (Free)",
+            "cerebras", "Cerebras (Free)",
+            "openai", "OpenAI (Paid)",
+            "claude", "Claude (Paid)"
     );
 
     private static final Map<String, String> KNOWN_DEFAULT_MODELS = Map.of(
-            "groq",      "llama-3.3-70b-versatile",
-            "gemini",    "gemini-1.5-pro",
-            "mistral",   "mistral-large-latest",
-            "deepseek",  "deepseek-chat",
-            "cerebras",  "qwen-3-235b-a22b-instruct-2507",
-            "openai",    "gpt-4o",
-            "claude",    "claude-sonnet-4-6"
+            "groq", "llama-3.3-70b-versatile",
+            "gemini", "gemini-1.5-pro",
+            "mistral", "mistral-large-latest",
+            "deepseek", "deepseek-chat",
+            "cerebras", "qwen-3-235b-a22b-instruct-2507",
+            "openai", "gpt-4o",
+            "claude", "claude-sonnet-4-6"
     );
 
     private static final Map<String, String> KNOWN_BASE_URLS = Map.of(
-            "groq",      "https://api.groq.com/openai/v1",
-            "gemini",    "https://generativelanguage.googleapis.com/v1beta/openai",
-            "mistral",   "https://api.mistral.ai/v1",
-            "deepseek",  "https://api.deepseek.com/v1",
-            "cerebras",  "https://api.cerebras.ai/v1",
-            "openai",    "https://api.openai.com/v1",
-            "claude",    "https://api.anthropic.com/v1"
+            "groq", "https://api.groq.com/openai/v1",
+            "gemini", "https://generativelanguage.googleapis.com/v1beta/openai",
+            "mistral", "https://api.mistral.ai/v1",
+            "deepseek", "https://api.deepseek.com/v1",
+            "cerebras", "https://api.cerebras.ai/v1",
+            "openai", "https://api.openai.com/v1",
+            "claude", "https://api.anthropic.com/v1"
     );
 
     // ── Known API key format prefixes (for structural validation) ──────────
     private static final Map<String, String> KNOWN_KEY_PREFIXES = Map.of(
-            "groq",      "gsk_",
-            "openai",    "sk-",
-            "claude",    "sk-ant-",
-            "gemini",    "AIza",
-            "cerebras",  "csk-"
+            "groq", "gsk_",
+            "openai", "sk-",
+            "claude", "sk-ant-",
+            "gemini", "AIza",
+            "cerebras", "csk-"
     );
 
     // ── Ping cache: "providerKey:apiKey" → true (only successful pings are cached).
@@ -110,7 +107,8 @@ public final class AiProviderRegistry {
             new ConcurrentHashMap<>();
 
     // ── Singleton prevention ───────────────────────────────────────────────
-    private AiProviderRegistry() {}
+    private AiProviderRegistry() {
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Public API
@@ -160,7 +158,7 @@ public final class AiProviderRegistry {
      *   <li>Live ping — skipped if a previous successful ping is cached.</li>
      * </ol>
      *
-     * @param config  provider to validate
+     * @param config provider to validate
      * @return {@code null} on success; a user-readable error message on failure
      */
     public static String validateAndPing(AiProviderConfig config) {
@@ -309,12 +307,12 @@ public final class AiProviderRegistry {
      * Returns {@code null} if the resolved model or base.url is blank for an unknown provider.
      */
     private static AiProviderConfig buildConfig(String key, Properties props) {
-        String apiKey   = resolve(props, key, "api.key", "");
-        String model    = resolve(props, key, "model",   KNOWN_DEFAULT_MODELS.getOrDefault(key, ""));
-        String baseUrl  = resolve(props, key, "base.url",KNOWN_BASE_URLS.getOrDefault(key, ""));
-        int    timeout  = resolveInt(props, key, "timeout.seconds", DEFAULT_TIMEOUT);
-        int    maxTok   = resolveInt(props, key, "max.tokens",      DEFAULT_MAX_TOKENS);
-        double temp     = resolveDouble(props, key, "temperature",  DEFAULT_TEMPERATURE);
+        String apiKey = resolve(props, key, "api.key", "");
+        String model = resolve(props, key, "model", KNOWN_DEFAULT_MODELS.getOrDefault(key, ""));
+        String baseUrl = resolve(props, key, "base.url", KNOWN_BASE_URLS.getOrDefault(key, ""));
+        int timeout = resolveInt(props, key, "timeout.seconds", DEFAULT_TIMEOUT);
+        int maxTok = resolveInt(props, key, "max.tokens", DEFAULT_MAX_TOKENS);
+        double temp = resolveDouble(props, key, "temperature", DEFAULT_TEMPERATURE);
 
         if (model.isEmpty() || baseUrl.isEmpty()) {
             log.warn("buildConfig: provider '{}' skipped — model or base.url not set and no built-in default.", key);
@@ -367,8 +365,9 @@ public final class AiProviderRegistry {
                                   String field, int defaultValue) {
         String v = props.getProperty(PREFIX + providerKey + "." + field, "").trim();
         if (v.isEmpty()) return defaultValue;
-        try { return Integer.parseInt(v); }
-        catch (NumberFormatException e) {
+        try {
+            return Integer.parseInt(v);
+        } catch (NumberFormatException e) {
             log.warn("resolveInt: invalid value '{}' for {}.{} — using default {}.", v, providerKey, field, defaultValue);
             return defaultValue;
         }
@@ -378,8 +377,9 @@ public final class AiProviderRegistry {
                                         String field, double defaultValue) {
         String v = props.getProperty(PREFIX + providerKey + "." + field, "").trim();
         if (v.isEmpty()) return defaultValue;
-        try { return Double.parseDouble(v); }
-        catch (NumberFormatException e) {
+        try {
+            return Double.parseDouble(v);
+        } catch (NumberFormatException e) {
             log.warn("resolveDouble: invalid value '{}' for {}.{} — using default {}.", v, providerKey, field, defaultValue);
             return defaultValue;
         }

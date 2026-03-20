@@ -4,6 +4,10 @@ import org.apache.jmeter.samplers.SampleResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 
 /**
@@ -20,6 +24,95 @@ final class JtlParserCore {
     private static final Logger log = LoggerFactory.getLogger(JtlParserCore.class);
 
     private JtlParserCore() { /* static utility — not instantiable */ }
+
+    // ─────────────────────────────────────────────────────────────
+    // Timestamp format detection
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Known JMeter datetime timestamp patterns, tried in order during auto-detection.
+     * Epoch-ms timestamps are handled separately via {@link Long#parseLong}.
+     */
+    private static final DateTimeFormatter[] KNOWN_TS_FORMATTERS = {
+            DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss.SSS"),
+            DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+            DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm:ss.SSS"),
+            DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm:ss"),
+    };
+
+    /**
+     * Auto-detects the {@link DateTimeFormatter} from the first raw timestamp value
+     * in the JTL file.
+     *
+     * <p>If the raw value is parseable as a {@code long} (epoch milliseconds), returns
+     * {@code null} — the caller should use epoch-ms mode. Otherwise, each pattern in
+     * {@link #KNOWN_TS_FORMATTERS} is tried in order; the first that successfully parses
+     * the value is returned. If no pattern matches, {@code null} is returned and a warning
+     * is logged.</p>
+     *
+     * @param rawTs first raw timestamp string from the JTL header row; must not be null
+     * @return matching {@link DateTimeFormatter}, or {@code null} for epoch-ms / unknown format
+     */
+    static DateTimeFormatter detectTimestampFormatter(String rawTs) {
+        if (rawTs == null || rawTs.isEmpty()) return null;
+
+        // Epoch ms — no formatter needed
+        try { Long.parseLong(rawTs); return null; } catch (NumberFormatException ignored) {}
+
+        // Try each known pattern
+        for (DateTimeFormatter fmt : KNOWN_TS_FORMATTERS) {
+            try {
+                LocalDateTime.parse(rawTs, fmt);
+                log.info("detectTimestampFormatter: detected format '{}' from sample '{}'",
+                        fmt, rawTs);
+                return fmt;
+            } catch (DateTimeParseException ignored) {}
+        }
+
+        log.warn("detectTimestampFormatter: unrecognised timestamp format '{}' — " +
+                "falling back to epoch-ms mode.", rawTs);
+        return null;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Timestamp parsing
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Parses a raw JTL timestamp string to epoch milliseconds.
+     *
+     * <p>Resolution order:</p>
+     * <ol>
+     *   <li>Epoch ms — {@code Long.parseLong}; succeeds for standard JMeter JTLs.</li>
+     *   <li>Auto-detected formatter — supplied by
+     *       {@link JTLParser} after calling {@link #detectTimestampFormatter} on the
+     *       first data row.</li>
+     * </ol>
+     *
+     * <p>All parsed date-times are interpreted as local time.</p>
+     *
+     * @param raw       raw timestamp string from the JTL; must not be null
+     * @param formatter auto-detected {@link DateTimeFormatter}; {@code null} = epoch-ms mode
+     * @return epoch milliseconds, or {@code 0L} if all parse attempts fail
+     */
+    static long parseTimestampMs(String raw, DateTimeFormatter formatter) {
+        if (raw == null || raw.isEmpty()) return 0L;
+
+        // 1. Epoch ms — default JMeter format
+        try { return Long.parseLong(raw); } catch (NumberFormatException ignored) {}
+
+        // 2. Auto-detected formatter
+        if (formatter != null) {
+            try {
+                return LocalDateTime.parse(raw, formatter)
+                        .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+            } catch (DateTimeParseException ignored) {}
+        }
+
+        return 0L;
+    }
 
     // ─────────────────────────────────────────────────────────────
     // Bucket helpers

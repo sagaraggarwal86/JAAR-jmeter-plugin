@@ -42,73 +42,6 @@ final class AiReportLauncher {
     private final DataProvider dataProvider;
 
     /**
-     * Callback interface that supplies live data from the parent panel.
-     * Decouples {@link AiReportLauncher} from the panel's private fields.
-     */
-    interface DataProvider {
-        /** Returns a snapshot of the cached aggregated results. */
-        Map<String, SamplingStatCalculator> getCachedResults();
-
-        /** Returns the visible (filtered + sorted) table rows, TOTAL excluded. */
-        List<String[]> getVisibleTableRows();
-
-        /** Returns the cached time buckets. */
-        List<JTLParser.TimeBucket> getCachedBuckets();
-
-        /** Returns the absolute path of the last loaded JTL file. */
-        String getLastLoadedFilePath();
-
-        /** Returns the current scenario metadata. */
-        ScenarioMetadata getMetadata();
-
-        /** Returns the currently configured percentile (1–99). */
-        int getPercentile();
-
-        /** Returns the formatted start time string. */
-        String getStartTime();
-
-        /** Returns the formatted end time string. */
-        String getEndTime();
-
-        /** Returns the formatted duration string. */
-        String getDuration();
-
-        /** Returns the provider selected in the UI dropdown, or {@code null} if none. */
-        AiProviderConfig getSelectedProvider();
-
-        /**
-         * Returns the current SLA configuration snapshot from the UI fields.
-         * Never null — returns a disabled SlaConfig if no thresholds are set.
-         */
-        com.personal.jmeter.listener.SlaConfig getSlaConfig();
-
-        /**
-         * Returns the top-5 error type summary from the last parsed JTL.
-         * Empty list when no failures occurred.
-         */
-        List<Map<String, Object>> getErrorTypeSummary();
-
-        /**
-         * Returns the average Latency (TTFB) in ms from the last parsed JTL.
-         * Zero when {@link #isLatencyPresent()} is false.
-         */
-        long getAvgLatencyMs();
-
-        /**
-         * Returns the average Connect time in ms from the last parsed JTL.
-         * Zero when {@link #isLatencyPresent()} is false.
-         */
-        long getAvgConnectMs();
-
-        /**
-         * Returns {@code true} when the last parsed JTL contained at least one
-         * non-zero Latency value.  Drives the direct vs inferred mode in the
-         * Advanced Web Diagnostics section of the AI prompt.
-         */
-        boolean isLatencyPresent();
-    }
-
-    /**
      * Constructs the launcher.
      *
      * @param parent       the Swing parent for dialogs; must not be null
@@ -120,6 +53,33 @@ final class AiReportLauncher {
         this.executor = executor;
         this.dataProvider = dataProvider;
     }
+
+    /**
+     * Returns the JMeter home directory, or {@code null} if not set.
+     * Uses the {@code JMETER_HOME} system property or environment variable.
+     * Package-accessible so {@link AggregateReportPanel} can use it for provider loading.
+     */
+    static java.io.File resolveJmeterHomeStatic() {
+        return resolveJmeterHome();
+    }
+
+    /**
+     * Returns the JMeter home directory, or {@code null} if not set.
+     * Uses the {@code JMETER_HOME} system property or environment variable.
+     */
+    private static java.io.File resolveJmeterHome() {
+        String home = System.getProperty("jmeter.home");
+        if (home == null || home.isBlank()) {
+            home = System.getenv("JMETER_HOME");
+        }
+        if (home == null || home.isBlank()) return null;
+        java.io.File f = new java.io.File(home);
+        return f.isDirectory() ? f : null;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Private helpers
+    // ─────────────────────────────────────────────────────────────
 
     /**
      * Validates provider selection and loads the prompt on the EDT, then immediately
@@ -205,10 +165,6 @@ final class AiReportLauncher {
         });
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Private helpers
-    // ─────────────────────────────────────────────────────────────
-
     /**
      * Builds the AI analysis prompt on the Swing EDT.
      *
@@ -217,13 +173,13 @@ final class AiReportLauncher {
      * The returned {@link PromptContent} is an immutable record safe to
      * pass across the thread boundary to the background executor.</p>
      *
-     * @param systemPrompt       loaded system prompt text
+     * @param systemPrompt        loaded system prompt text
      * @param providerDisplayName display name of the selected provider
      * @return immutable prompt content ready for the AI API call
      */
     private PromptContent buildPromptOnEdt(String systemPrompt, String providerDisplayName) {
-        final ScenarioMetadata metadata   = dataProvider.getMetadata();
-        final int              percentile = dataProvider.getPercentile();
+        final ScenarioMetadata metadata = dataProvider.getMetadata();
+        final int percentile = dataProvider.getPercentile();
         final com.personal.jmeter.listener.SlaConfig sla = dataProvider.getSlaConfig();
 
         final String slaErrorPct = sla.isErrorPctEnabled()
@@ -250,12 +206,12 @@ final class AiReportLauncher {
     }
 
     private AiReportCoordinator.ReportContext buildReportContext(AiProviderConfig providerConfig) {
-        final ScenarioMetadata metadata   = dataProvider.getMetadata();
-        final int              percentile = dataProvider.getPercentile();
+        final ScenarioMetadata metadata = dataProvider.getMetadata();
+        final int percentile = dataProvider.getPercentile();
         final com.personal.jmeter.listener.SlaConfig sla = dataProvider.getSlaConfig();
 
         double errorSla = sla.isErrorPctEnabled() ? sla.errorPctThreshold : -1.0;
-        long   rtSla    = sla.isRtEnabled()        ? sla.rtThresholdMs    : -1L;
+        long rtSla = sla.isRtEnabled() ? sla.rtThresholdMs : -1L;
         String rtMetric = sla.rtMetric == com.personal.jmeter.listener.SlaConfig.RtMetric.AVG
                 ? "avg" : "pnn";
 
@@ -273,29 +229,6 @@ final class AiReportLauncher {
                 dataProvider.getLastLoadedFilePath(),
                 providerConfig.displayName,
                 providerConfig);
-    }
-
-    /**
-     * Returns the JMeter home directory, or {@code null} if not set.
-     * Uses the {@code JMETER_HOME} system property or environment variable.
-     * Package-accessible so {@link AggregateReportPanel} can use it for provider loading.
-     */
-    static java.io.File resolveJmeterHomeStatic() {
-        return resolveJmeterHome();
-    }
-
-    /**
-     * Returns the JMeter home directory, or {@code null} if not set.
-     * Uses the {@code JMETER_HOME} system property or environment variable.
-     */
-    private static java.io.File resolveJmeterHome() {
-        String home = System.getProperty("jmeter.home");
-        if (home == null || home.isBlank()) {
-            home = System.getenv("JMETER_HOME");
-        }
-        if (home == null || home.isBlank()) return null;
-        java.io.File f = new java.io.File(home);
-        return f.isDirectory() ? f : null;
     }
 
     private JDialog buildProgressDialog() {
@@ -316,5 +249,92 @@ final class AiReportLauncher {
     private JLabel extractProgressLabel(JDialog dialog) {
         return (JLabel) ((BorderLayout) dialog.getContentPane().getLayout())
                 .getLayoutComponent(BorderLayout.CENTER);
+    }
+
+    /**
+     * Callback interface that supplies live data from the parent panel.
+     * Decouples {@link AiReportLauncher} from the panel's private fields.
+     */
+    interface DataProvider {
+        /**
+         * Returns a snapshot of the cached aggregated results.
+         */
+        Map<String, SamplingStatCalculator> getCachedResults();
+
+        /**
+         * Returns the visible (filtered + sorted) table rows, TOTAL excluded.
+         */
+        List<String[]> getVisibleTableRows();
+
+        /**
+         * Returns the cached time buckets.
+         */
+        List<JTLParser.TimeBucket> getCachedBuckets();
+
+        /**
+         * Returns the absolute path of the last loaded JTL file.
+         */
+        String getLastLoadedFilePath();
+
+        /**
+         * Returns the current scenario metadata.
+         */
+        ScenarioMetadata getMetadata();
+
+        /**
+         * Returns the currently configured percentile (1–99).
+         */
+        int getPercentile();
+
+        /**
+         * Returns the formatted start time string.
+         */
+        String getStartTime();
+
+        /**
+         * Returns the formatted end time string.
+         */
+        String getEndTime();
+
+        /**
+         * Returns the formatted duration string.
+         */
+        String getDuration();
+
+        /**
+         * Returns the provider selected in the UI dropdown, or {@code null} if none.
+         */
+        AiProviderConfig getSelectedProvider();
+
+        /**
+         * Returns the current SLA configuration snapshot from the UI fields.
+         * Never null — returns a disabled SlaConfig if no thresholds are set.
+         */
+        com.personal.jmeter.listener.SlaConfig getSlaConfig();
+
+        /**
+         * Returns the top-5 error type summary from the last parsed JTL.
+         * Empty list when no failures occurred.
+         */
+        List<Map<String, Object>> getErrorTypeSummary();
+
+        /**
+         * Returns the average Latency (TTFB) in ms from the last parsed JTL.
+         * Zero when {@link #isLatencyPresent()} is false.
+         */
+        long getAvgLatencyMs();
+
+        /**
+         * Returns the average Connect time in ms from the last parsed JTL.
+         * Zero when {@link #isLatencyPresent()} is false.
+         */
+        long getAvgConnectMs();
+
+        /**
+         * Returns {@code true} when the last parsed JTL contained at least one
+         * non-zero Latency value.  Drives the direct vs inferred mode in the
+         * Advanced Web Diagnostics section of the AI prompt.
+         */
+        boolean isLatencyPresent();
     }
 }

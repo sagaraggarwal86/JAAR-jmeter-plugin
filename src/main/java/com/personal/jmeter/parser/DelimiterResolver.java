@@ -28,15 +28,18 @@ import java.nio.charset.StandardCharsets;
  */
 public final class DelimiterResolver {
 
-    private static final Logger log = LoggerFactory.getLogger(DelimiterResolver.class);
-
-    /** The JMeter property key that defines the JTL field delimiter. */
+    /**
+     * The JMeter property key that defines the JTL field delimiter.
+     */
     static final String PROPERTY_KEY = "jmeter.save.saveservice.default_delimiter";
-
-    /** Default delimiter when no property is configured. */
+    /**
+     * Default delimiter when no property is configured.
+     */
     static final char DEFAULT_DELIMITER = ',';
-
-    /** Tab literal — JMeter uses {@code \t} as the property value for tab-separated JTLs. */
+    private static final Logger log = LoggerFactory.getLogger(DelimiterResolver.class);
+    /**
+     * Tab literal — JMeter uses {@code \t} as the property value for tab-separated JTLs.
+     */
     private static final String TAB_ESCAPE = "\\t";
 
     private DelimiterResolver() { /* static utility — not instantiable */ }
@@ -65,7 +68,7 @@ public final class DelimiterResolver {
         }
 
         // user.properties takes priority over jmeter.properties
-        File userProps   = new File(jmeterHome, "bin/user.properties");
+        File userProps = new File(jmeterHome, "bin/user.properties");
         File jmeterProps = new File(jmeterHome, "bin/jmeter.properties");
 
         char fromUser = readDelimiterFromFile(userProps);
@@ -139,7 +142,7 @@ public final class DelimiterResolver {
      *
      * @param line raw line from the file; may be {@code null}
      * @return delimiter character if the line is an active delimiter entry;
-     *         {@code '\0'} otherwise
+     * {@code '\0'} otherwise
      */
     static char parseLine(String line) {
         if (line == null) return '\0';

@@ -289,8 +289,8 @@ class MarkdownUtilsTest {
             String md = "## Exec\nBRIEF_VERDICT:FAIL\n## Verdict\nSLA breached.\nVERDICT:FAIL";
             String result = MarkdownUtils.stripVerdictLine(md);
             assertFalse(result.contains("BRIEF_VERDICT:"), "BRIEF_VERDICT removed");
-            assertFalse(result.contains("VERDICT:"),       "VERDICT removed");
-            assertTrue(result.contains("SLA breached."),   "prose preserved");
+            assertFalse(result.contains("VERDICT:"), "VERDICT removed");
+            assertTrue(result.contains("SLA breached."), "prose preserved");
         }
 
         @Test
@@ -326,13 +326,13 @@ class MarkdownUtilsTest {
         @DisplayName("only verdict token lines removed; all other content intact")
         void onlyVerdictLinesRemoved() {
             String body = "## Executive Summary\nTest ran.\n\n## Verdict\nFAIL by error rate.";
-            String md   = "BRIEF_VERDICT:FAIL\n" + body + "\nVERDICT:FAIL";
+            String md = "BRIEF_VERDICT:FAIL\n" + body + "\nVERDICT:FAIL";
             String result = MarkdownUtils.stripVerdictLine(md);
             assertTrue(result.contains("## Executive Summary"), "earlier content preserved");
-            assertTrue(result.contains("## Verdict"),           "Verdict section heading preserved");
-            assertTrue(result.contains("FAIL by error rate."),  "verdict prose preserved");
-            assertFalse(result.contains("VERDICT:FAIL"),        "machine token removed");
-            assertFalse(result.contains("BRIEF_VERDICT:"),      "brief token removed");
+            assertTrue(result.contains("## Verdict"), "Verdict section heading preserved");
+            assertTrue(result.contains("FAIL by error rate."), "verdict prose preserved");
+            assertFalse(result.contains("VERDICT:FAIL"), "machine token removed");
+            assertFalse(result.contains("BRIEF_VERDICT:"), "brief token removed");
         }
     }
 }

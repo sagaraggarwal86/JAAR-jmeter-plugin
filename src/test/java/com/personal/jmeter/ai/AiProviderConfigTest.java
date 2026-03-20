@@ -35,14 +35,14 @@ class AiProviderConfigTest {
         @DisplayName("all fields stored correctly")
         void allFieldsStored() {
             AiProviderConfig cfg = validConfig();
-            assertEquals("groq",              cfg.providerKey);
-            assertEquals("Groq (Free)",       cfg.displayName);
-            assertEquals("gsk_abc123",        cfg.apiKey);
-            assertEquals("llama-3.3-70b",     cfg.model);
+            assertEquals("groq", cfg.providerKey);
+            assertEquals("Groq (Free)", cfg.displayName);
+            assertEquals("gsk_abc123", cfg.apiKey);
+            assertEquals("llama-3.3-70b", cfg.model);
             assertEquals("https://api.groq.com/openai/v1", cfg.baseUrl);
-            assertEquals(60,                  cfg.timeoutSeconds);
-            assertEquals(8192,                cfg.maxTokens);
-            assertEquals(0.3,                 cfg.temperature, 0.001);
+            assertEquals(60, cfg.timeoutSeconds);
+            assertEquals(8192, cfg.maxTokens);
+            assertEquals(0.3, cfg.temperature, 0.001);
         }
 
         @Test

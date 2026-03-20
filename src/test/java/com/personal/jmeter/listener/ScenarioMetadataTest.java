@@ -70,9 +70,9 @@ class ScenarioMetadataTest {
         void nonNullValuesStoredAsIs() {
             ScenarioMetadata m = new ScenarioMetadata(
                     "Load Test", "Soak run", "200", "Users Thread Group");
-            assertEquals("Load Test",          m.scenarioName);
-            assertEquals("Soak run",           m.scenarioDesc);
-            assertEquals("200",                m.users);
+            assertEquals("Load Test", m.scenarioName);
+            assertEquals("Soak run", m.scenarioDesc);
+            assertEquals("200", m.users);
             assertEquals("Users Thread Group", m.threadGroupName);
         }
 
@@ -130,9 +130,9 @@ class ScenarioMetadataTest {
         void twoEmptyCallsAreEquivalent() {
             ScenarioMetadata a = ScenarioMetadata.empty();
             ScenarioMetadata b = ScenarioMetadata.empty();
-            assertEquals(a.scenarioName,    b.scenarioName);
-            assertEquals(a.scenarioDesc,    b.scenarioDesc);
-            assertEquals(a.users,           b.users);
+            assertEquals(a.scenarioName, b.scenarioName);
+            assertEquals(a.scenarioDesc, b.scenarioDesc);
+            assertEquals(a.users, b.users);
             assertEquals(a.threadGroupName, b.threadGroupName);
         }
     }

@@ -190,7 +190,7 @@ class JtlParserCoreTest {
         @DisplayName("startOffset excludes sample before offset")
         void startOffsetExcludes() {
             JTLParser.FilterOptions opts = new JTLParser.FilterOptions();
-            opts.startOffset  = 10;
+            opts.startOffset = 10;
             opts.minTimestamp = 0L;
             // sample at t=5s — before the 10s offset
             SampleResult sr = sampleAt(5_000L, "Login");
@@ -201,7 +201,7 @@ class JtlParserCoreTest {
         @DisplayName("startOffset includes sample at or after offset")
         void startOffsetIncludes() {
             JTLParser.FilterOptions opts = new JTLParser.FilterOptions();
-            opts.startOffset  = 10;
+            opts.startOffset = 10;
             opts.minTimestamp = 0L;
             // sample at t=15s — after the 10s offset
             SampleResult sr = sampleAt(15_000L, "Login");
@@ -212,7 +212,7 @@ class JtlParserCoreTest {
         @DisplayName("endOffset excludes sample after offset")
         void endOffsetExcludes() {
             JTLParser.FilterOptions opts = new JTLParser.FilterOptions();
-            opts.endOffset    = 30;
+            opts.endOffset = 30;
             opts.minTimestamp = 0L;
             // sample at t=40s — beyond the 30s end offset
             SampleResult sr = sampleAt(40_000L, "Login");
@@ -224,9 +224,9 @@ class JtlParserCoreTest {
         void includeLabelSubstring() {
             JTLParser.FilterOptions opts = new JTLParser.FilterOptions();
             opts.includeLabels = "Login";
-            SampleResult match    = sampleAt(0, "Login Flow");
-            SampleResult noMatch  = sampleAt(0, "Checkout");
-            assertTrue(JtlParserCore.shouldInclude(match,   opts));
+            SampleResult match = sampleAt(0, "Login Flow");
+            SampleResult noMatch = sampleAt(0, "Checkout");
+            assertTrue(JtlParserCore.shouldInclude(match, opts));
             assertFalse(JtlParserCore.shouldInclude(noMatch, opts));
         }
 
@@ -238,23 +238,23 @@ class JtlParserCoreTest {
             SampleResult excluded = sampleAt(0, "Checkout Flow");
             SampleResult included = sampleAt(0, "Login");
             assertFalse(JtlParserCore.shouldInclude(excluded, opts));
-            assertTrue(JtlParserCore.shouldInclude(included,  opts));
+            assertTrue(JtlParserCore.shouldInclude(included, opts));
         }
 
         @Test
         @DisplayName("startOffset and endOffset together — sample inside window is included")
         void bothOffsetsIncludesSampleInWindow() {
             JTLParser.FilterOptions opts = new JTLParser.FilterOptions();
-            opts.startOffset  = 10;
-            opts.endOffset    = 30;
+            opts.startOffset = 10;
+            opts.endOffset = 30;
             opts.minTimestamp = 0L;
             // total duration = 60s; window = [10s, 30s] → sample at 20s is inside
-            SampleResult inside  = sampleAt(20_000L, "Tx");
-            SampleResult before  = sampleAt(5_000L,  "Tx");
-            SampleResult after   = sampleAt(55_000L, "Tx");
-            assertTrue(JtlParserCore.shouldInclude(inside,  opts));
+            SampleResult inside = sampleAt(20_000L, "Tx");
+            SampleResult before = sampleAt(5_000L, "Tx");
+            SampleResult after = sampleAt(55_000L, "Tx");
+            assertTrue(JtlParserCore.shouldInclude(inside, opts));
             assertFalse(JtlParserCore.shouldInclude(before, opts));
-            assertFalse(JtlParserCore.shouldInclude(after,  opts));
+            assertFalse(JtlParserCore.shouldInclude(after, opts));
         }
 
         @Test
@@ -262,11 +262,11 @@ class JtlParserCoreTest {
         void excludeLabelsRegex() {
             JTLParser.FilterOptions opts = new JTLParser.FilterOptions();
             opts.excludeLabels = "Check.*";
-            opts.regExp        = true;
+            opts.regExp = true;
             SampleResult excluded = sampleAt(0, "Checkout");
             SampleResult included = sampleAt(0, "Login");
             assertFalse(JtlParserCore.shouldInclude(excluded, opts));
-            assertTrue(JtlParserCore.shouldInclude(included,  opts));
+            assertTrue(JtlParserCore.shouldInclude(included, opts));
         }
     }
 
@@ -326,11 +326,11 @@ class JtlParserCoreTest {
             TreeMap<Long, long[]> map = new TreeMap<>();
             map.put(60_000L, new long[]{100L, 1L, 0L, 0L});
             map.put(30_000L, new long[]{200L, 1L, 0L, 0L});
-            map.put(0L,      new long[]{300L, 1L, 0L, 0L});
+            map.put(0L, new long[]{300L, 1L, 0L, 0L});
             List<JTLParser.TimeBucket> buckets =
                     JtlParserCore.buildTimeBuckets(map, 30_000L, 0L, Long.MAX_VALUE);
             assertEquals(3, buckets.size());
-            assertEquals(0L,      buckets.get(0).epochMs);
+            assertEquals(0L, buckets.get(0).epochMs);
             assertEquals(30_000L, buckets.get(1).epochMs);
             assertEquals(60_000L, buckets.get(2).epochMs);
         }

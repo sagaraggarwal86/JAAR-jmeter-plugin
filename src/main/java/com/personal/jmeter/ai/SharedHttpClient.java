@@ -24,7 +24,9 @@ public final class SharedHttpClient {
      */
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(15);
 
-    /** Long-lived singleton — thread-safe and connection-pooled. */
+    /**
+     * Long-lived singleton — thread-safe and connection-pooled.
+     */
     private static final HttpClient INSTANCE = HttpClient.newBuilder()
             .connectTimeout(CONNECT_TIMEOUT)
             .build();

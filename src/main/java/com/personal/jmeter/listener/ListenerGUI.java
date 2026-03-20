@@ -33,20 +33,18 @@ public class ListenerGUI extends AbstractVisualizer {
     private static final Logger log = LoggerFactory.getLogger(ListenerGUI.class);
 
     private final AggregateReportPanel reportPanel = new AggregateReportPanel();
-
-    /**
-     * Set to {@code true} inside {@link #modifyTestElement} so that the
-     * subsequent {@link #clearGui()} call triggered by JMeter tree navigation
-     * can be distinguished from a user-initiated Clear All action.
-     */
-    private boolean isTreeNavigation = false;
-
     /**
      * Tracks file paths for which a "file not found" warning has already been
      * shown in this JMeter session. Prevents repeated dialogs on every tree click.
      * Entry is removed when the user successfully reloads the file via Browse.
      */
     private final java.util.Set<String> missingFileWarned = new java.util.HashSet<>();
+    /**
+     * Set to {@code true} inside {@link #modifyTestElement} so that the
+     * subsequent {@link #clearGui()} call triggered by JMeter tree navigation
+     * can be distinguished from a user-initiated Clear All action.
+     */
+    private boolean isTreeNavigation = false;
 
     // ─────────────────────────────────────────────────────────────
     // Constructor
@@ -63,6 +61,14 @@ public class ListenerGUI extends AbstractVisualizer {
 
     // ─────────────────────────────────────────────────────────────
     // Layout
+    // ─────────────────────────────────────────────────────────────
+
+    private static String trimOrEmpty(String s) {
+        return s != null ? s.trim() : "";
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // AbstractVisualizer contract
     // ─────────────────────────────────────────────────────────────
 
     private void initComponents() {
@@ -99,10 +105,6 @@ public class ListenerGUI extends AbstractVisualizer {
 
         add(reportPanel, BorderLayout.CENTER);
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // AbstractVisualizer contract
-    // ─────────────────────────────────────────────────────────────
 
     /**
      * Called immediately after the user selects a file via Browse.
@@ -152,18 +154,18 @@ public class ListenerGUI extends AbstractVisualizer {
         isTreeNavigation = true;
         super.modifyTestElement(el);
         // ── Filter fields ────────────────────────────────────────
-        el.setProperty(ListenerCollector.PROP_START_OFFSET,   reportPanel.getStartOffset());
-        el.setProperty(ListenerCollector.PROP_END_OFFSET,     reportPanel.getEndOffset());
-        el.setProperty(ListenerCollector.PROP_PERCENTILE,     reportPanel.getPercentileText());
+        el.setProperty(ListenerCollector.PROP_START_OFFSET, reportPanel.getStartOffset());
+        el.setProperty(ListenerCollector.PROP_END_OFFSET, reportPanel.getEndOffset());
+        el.setProperty(ListenerCollector.PROP_PERCENTILE, reportPanel.getPercentileText());
         // ── SLA fields ───────────────────────────────────────────
-        el.setProperty(ListenerCollector.PROP_ERROR_PCT_SLA,    reportPanel.getErrorPctSla());
+        el.setProperty(ListenerCollector.PROP_ERROR_PCT_SLA, reportPanel.getErrorPctSla());
         el.setProperty(ListenerCollector.PROP_RT_THRESHOLD_SLA, reportPanel.getRtThresholdSla());
-        el.setProperty(ListenerCollector.PROP_RT_METRIC,        reportPanel.getRtMetricIndex());
+        el.setProperty(ListenerCollector.PROP_RT_METRIC, reportPanel.getRtMetricIndex());
         // ── Chart / search fields ────────────────────────────────
         el.setProperty(ListenerCollector.PROP_CHART_INTERVAL, reportPanel.getChartInterval());
-        el.setProperty(ListenerCollector.PROP_SEARCH,         reportPanel.getSearch());
-        el.setProperty(ListenerCollector.PROP_REGEX,          reportPanel.isRegex());
-        el.setProperty(ListenerCollector.PROP_FILTER_MODE,    reportPanel.getFilterModeIndex());
+        el.setProperty(ListenerCollector.PROP_SEARCH, reportPanel.getSearch());
+        el.setProperty(ListenerCollector.PROP_REGEX, reportPanel.isRegex());
+        el.setProperty(ListenerCollector.PROP_FILTER_MODE, reportPanel.getFilterModeIndex());
         // ── File and column state ────────────────────────────────
         String lastFile = reportPanel.getLastLoadedFilePath();
         if (lastFile != null) el.setProperty(ListenerCollector.PROP_LAST_FILE, lastFile);
@@ -244,6 +246,10 @@ public class ListenerGUI extends AbstractVisualizer {
         reportPanel.clearAll();
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Test-plan metadata for AI report
+    // ─────────────────────────────────────────────────────────────
+
     /**
      * No-op: this plugin processes JTL files only — it does not capture live metrics.
      *
@@ -253,10 +259,6 @@ public class ListenerGUI extends AbstractVisualizer {
     public void add(SampleResult sample) {
         // Intentionally empty
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // Test-plan metadata for AI report
-    // ─────────────────────────────────────────────────────────────
 
     /**
      * {@inheritDoc}
@@ -286,7 +288,7 @@ public class ListenerGUI extends AbstractVisualizer {
                 if (el instanceof TestPlan) {
                     String scenarioName = trimOrEmpty(el.getName());
                     String scenarioDesc = trimOrEmpty(el.getComment());
-                    int    threadCount  = sumThreadCounts(node);
+                    int threadCount = sumThreadCounts(node);
                     String threadGrpName = readFirstThreadGroupName(node);
                     String users = threadCount > 0 ? String.valueOf(threadCount) : "";
                     return new ScenarioMetadata(scenarioName, scenarioDesc, users, threadGrpName);
@@ -319,10 +321,6 @@ public class ListenerGUI extends AbstractVisualizer {
             }
         }
         return "";
-    }
-
-    private static String trimOrEmpty(String s) {
-        return s != null ? s.trim() : "";
     }
 
     // ─────────────────────────────────────────────────────────────

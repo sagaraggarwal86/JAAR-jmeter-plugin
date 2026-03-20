@@ -21,10 +21,12 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("SlaRowRenderer")
 class SlaRowRendererTest {
 
-    /** Column indices matching {@link AggregateReportPanel} constants. */
-    private static final int NAME_COL       = AggregateReportPanel.NAME_COL_INDEX;       // 0
-    private static final int AVG_COL        = AggregateReportPanel.AVG_COL_INDEX;        // 4
-    private static final int PNN_COL        = AggregateReportPanel.PERCENTILE_COL_INDEX; // 7
+    /**
+     * Column indices matching {@link AggregateReportPanel} constants.
+     */
+    private static final int NAME_COL = AggregateReportPanel.NAME_COL_INDEX;       // 0
+    private static final int AVG_COL = AggregateReportPanel.AVG_COL_INDEX;        // 4
+    private static final int PNN_COL = AggregateReportPanel.PERCENTILE_COL_INDEX; // 7
     private static final int ERROR_RATE_COL = AggregateReportPanel.ERROR_RATE_COL_INDEX; // 9
 
     private DefaultTableModel model;
@@ -36,20 +38,24 @@ class SlaRowRendererTest {
     void setUp() {
         model = new DefaultTableModel(AggregateReportPanel.ALL_COLUMNS, 0);
         table = new JTable(model);
-        currentSla = new SlaConfig[]{ SlaConfig.disabled(90) };
+        currentSla = new SlaConfig[]{SlaConfig.disabled(90)};
         renderer = new SlaRowRenderer(
                 () -> currentSla[0],
                 ERROR_RATE_COL, AVG_COL, PNN_COL, NAME_COL);
         table.setDefaultRenderer(Object.class, renderer);
     }
 
-    /** Standard data row matching ALL_COLUMNS (13 elements). */
+    /**
+     * Standard data row matching ALL_COLUMNS (13 elements).
+     */
     private void addRow(String name, String avg, String p90, String errorRate) {
         model.addRow(new Object[]{name, 100L, 95L, 5L, avg, "10", "500", p90,
                 "50.0", errorRate, "10.0/sec", "5.00", "512.0"});
     }
 
-    /** Renders the cell and returns the Component for assertion. */
+    /**
+     * Renders the cell and returns the Component for assertion.
+     */
     private Component render(int row, int col) {
         return renderer.getTableCellRendererComponent(
                 table, model.getValueAt(row, col), false, false, row, col);

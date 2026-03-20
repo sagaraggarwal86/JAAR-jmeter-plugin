@@ -61,11 +61,11 @@ final class FilePanelCustomizer {
      * every Browse click. Passing a {@code String} snapshot captured at construction
      * time would freeze the start directory to whatever was selected first.</p>
      *
-     * @param container      root container to search recursively
-     * @param currentFileFn  supplier of the currently selected file path (may return null/empty)
-     * @param setFileFn      callback to update the file path after selection
-     * @param ownerComp      parent component for the file-chooser dialog
-     * @param onLoadFn       callback to load and process the selected file
+     * @param container     root container to search recursively
+     * @param currentFileFn supplier of the currently selected file path (may return null/empty)
+     * @param setFileFn     callback to update the file path after selection
+     * @param ownerComp     parent component for the file-chooser dialog
+     * @param onLoadFn      callback to load and process the selected file
      */
     static void overrideBrowseButton(Container container,
                                      java.util.function.Supplier<String> currentFileFn,

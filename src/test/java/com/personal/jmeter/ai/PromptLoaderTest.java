@@ -73,7 +73,7 @@ class PromptLoaderTest {
         @Test
         @DisplayName("load() returns same content on repeated calls")
         void loadIsIdempotent() {
-            String first  = PromptLoader.load();
+            String first = PromptLoader.load();
             String second = PromptLoader.load();
             assertNotNull(first);
             assertNotNull(second);

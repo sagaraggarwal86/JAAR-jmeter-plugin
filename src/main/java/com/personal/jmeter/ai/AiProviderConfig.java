@@ -9,16 +9,24 @@ package com.personal.jmeter.ai;
  */
 public final class AiProviderConfig {
 
-    /** Internal provider key as it appears in the properties file (e.g. {@code groq}). */
+    /**
+     * Internal provider key as it appears in the properties file (e.g. {@code groq}).
+     */
     public final String providerKey;
 
-    /** Human-readable label shown in the UI dropdown (e.g. {@code Groq (Free)}). */
+    /**
+     * Human-readable label shown in the UI dropdown (e.g. {@code Groq (Free)}).
+     */
     public final String displayName;
 
-    /** API key. Non-blank — providers with blank keys are not surfaced by the registry. */
+    /**
+     * API key. Non-blank — providers with blank keys are not surfaced by the registry.
+     */
     public final String apiKey;
 
-    /** Model identifier (e.g. {@code llama-3.3-70b-versatile}). */
+    /**
+     * Model identifier (e.g. {@code llama-3.3-70b-versatile}).
+     */
     public final String model;
 
     /**
@@ -27,13 +35,19 @@ public final class AiProviderConfig {
      */
     public final String baseUrl;
 
-    /** Request + connect timeout in seconds. */
+    /**
+     * Request + connect timeout in seconds.
+     */
     public final int timeoutSeconds;
 
-    /** Maximum tokens the model may return. */
+    /**
+     * Maximum tokens the model may return.
+     */
     public final int maxTokens;
 
-    /** Sampling temperature (0.0–2.0). */
+    /**
+     * Sampling temperature (0.0–2.0).
+     */
     public final double temperature;
 
     /**
@@ -66,14 +80,14 @@ public final class AiProviderConfig {
         if (maxTokens <= 0)
             throw new IllegalArgumentException("maxTokens must be > 0");
 
-        this.providerKey    = providerKey;
-        this.displayName    = displayName;
-        this.apiKey         = apiKey;
-        this.model          = model.trim();
-        this.baseUrl        = baseUrl.trim().replaceAll("/+$", ""); // strip trailing slash
+        this.providerKey = providerKey;
+        this.displayName = displayName;
+        this.apiKey = apiKey;
+        this.model = model.trim();
+        this.baseUrl = baseUrl.trim().replaceAll("/+$", ""); // strip trailing slash
         this.timeoutSeconds = timeoutSeconds;
-        this.maxTokens      = maxTokens;
-        this.temperature    = temperature;
+        this.maxTokens = maxTokens;
+        this.temperature = temperature;
     }
 
     /**
@@ -85,7 +99,9 @@ public final class AiProviderConfig {
         return baseUrl + "/chat/completions";
     }
 
-    /** Returns the {@link #displayName} so the JComboBox renderer needs no customisation. */
+    /**
+     * Returns the {@link #displayName} so the JComboBox renderer needs no customisation.
+     */
     @Override
     public String toString() {
         return displayName;

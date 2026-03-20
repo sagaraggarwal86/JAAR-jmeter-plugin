@@ -13,38 +13,34 @@ import java.util.List;
  */
 final class CliArgs {
 
+    private final List<String> errors = new ArrayList<>();
     // ── Required ──────────────────────────────────────────────────
     private String inputFile;
     private String provider;
     private String configFile;
-
     // ── Output ────────────────────────────────────────────────────
     private String outputFile = "./report.html";
-
     // ── Filter Options ────────────────────────────────────────────
-    private int    startOffset    = 0;
-    private int    endOffset      = 0;
-    private int    percentile     = 90;
-    private int    chartInterval  = 0;
-    private String search         = "";
-    private boolean regex         = false;
-    private boolean exclude       = false;
-
+    private int startOffset = 0;
+    private int endOffset = 0;
+    private int percentile = 90;
+    private int chartInterval = 0;
+    private String search = "";
+    private boolean regex = false;
+    private boolean exclude = false;
     // ── Report Metadata ───────────────────────────────────────────
-    private String scenarioName   = "";
-    private String description    = "";
-    private int    virtualUsers   = 0;
-
+    private String scenarioName = "";
+    private String description = "";
+    private int virtualUsers = 0;
     // ── SLA Thresholds ────────────────────────────────────────────
-    private int    errorSla       = -1;
-    private long   rtSla          = -1;
-    private String rtMetric       = "percentile";
-
+    private int errorSla = -1;
+    private long rtSla = -1;
+    private String rtMetric = "percentile";
     // ── State ─────────────────────────────────────────────────────
     private boolean helpRequested = false;
-    private final List<String> errors = new ArrayList<>();
 
-    private CliArgs() {}
+    private CliArgs() {
+    }
 
     // ─────────────────────────────────────────────────────────────
     // Factory
@@ -69,55 +65,184 @@ final class CliArgs {
     // Accessors
     // ─────────────────────────────────────────────────────────────
 
-    String  inputFile()     { return inputFile; }
-    String  outputFile()    { return outputFile; }
-    String  provider()      { return provider; }
-    String  configFile()    { return configFile; }
-    int     startOffset()   { return startOffset; }
-    int     endOffset()     { return endOffset; }
-    int     percentile()    { return percentile; }
-    int     chartInterval() { return chartInterval; }
-    String  search()        { return search; }
-    boolean regex()         { return regex; }
-    boolean exclude()       { return exclude; }
-    String  scenarioName()  { return scenarioName; }
-    String  description()   { return description; }
-    int     virtualUsers()  { return virtualUsers; }
-    int     errorSla()      { return errorSla; }
-    long    rtSla()         { return rtSla; }
-    String  rtMetric()      { return rtMetric; }
-    boolean helpRequested() { return helpRequested; }
-    boolean hasErrorSla()   { return errorSla > 0; }
-    boolean hasRtSla()      { return rtSla > 0; }
-    List<String> errors()   { return errors; }
+    static String helpText() {
+        return """
+                JAAR — JTL AI Analysis & Reporting  (CLI Mode)
+                
+                Usage:
+                  jaar-cli-report.sh  [options]     (macOS / Linux)
+                  jaar-cli-report.bat [options]     (Windows)
+                
+                  Place the wrapper script in $JMETER_HOME/bin/.
+                  The plugin JAR must be in $JMETER_HOME/lib/ext/.
+                
+                Required:
+                  -i, --input FILE            JTL/CSV file path
+                  --provider STRING           provider name, case-insensitive
+                                              (groq, openai, claude, gemini, mistral, deepseek)
+                  --config FILE               path to ai-reporter.properties
+                
+                Output:
+                  -o, --output FILE           HTML report output path (default: ./report.html)
+                
+                Filter Options:
+                  --start-offset INT          seconds to trim from start
+                  --end-offset INT            seconds to trim from end
+                  --percentile INT            percentile 1-99 (default: 90)
+                  --chart-interval INT        seconds per chart bucket, 0=auto (default: 0)
+                  --search STRING             label filter text (include mode by default)
+                  --regex                     treat --search as regex
+                  --exclude                   exclude matching transactions (default: include)
+                
+                Report Metadata:
+                  --scenario-name STRING      scenario name for report header
+                  --description STRING        scenario description
+                  --virtual-users INT         virtual user count for report header
+                
+                SLA Thresholds:
+                  --error-sla INT             error rate threshold % (1-99)
+                  --rt-sla LONG               response time threshold in ms
+                  --rt-metric avg|percentile  which RT column for --rt-sla (default: percentile)
+                
+                Help:
+                  -h, --help                  print this message and exit
+                
+                Exit Codes:
+                  0   AI verdict PASS — pipeline continues
+                  1   AI verdict FAIL — pipeline gate fails
+                  2   AI verdict UNDECISIVE — pipeline continues
+                  3   Invalid arguments
+                  4   JTL parse error
+                  5   AI provider error (key, ping, or API failure)
+                  6   Report write error
+                  7   Unexpected error — full stack trace printed to stderr
+                
+                Examples:
+                  # Minimal
+                  jaar-cli-report.sh -i results.jtl --provider groq --config ai-reporter.properties
+                
+                  # Full
+                  jaar-cli-report.sh \\
+                    -i results.jtl -o report.html \\
+                    --provider openai --config /path/to/ai-reporter.properties \\
+                    --start-offset 10 --end-offset 300 --percentile 95 \\
+                    --chart-interval 60 --search "Login" \\
+                    --scenario-name "Load Test" --description "Peak hour" --virtual-users 200 \\
+                    --error-sla 5 --rt-sla 2000 --rt-metric percentile
+                """;
+    }
+
+    String inputFile() {
+        return inputFile;
+    }
+
+    String outputFile() {
+        return outputFile;
+    }
+
+    String provider() {
+        return provider;
+    }
+
+    String configFile() {
+        return configFile;
+    }
+
+    int startOffset() {
+        return startOffset;
+    }
+
+    int endOffset() {
+        return endOffset;
+    }
+
+    int percentile() {
+        return percentile;
+    }
+
+    int chartInterval() {
+        return chartInterval;
+    }
+
+    String search() {
+        return search;
+    }
+
+    boolean regex() {
+        return regex;
+    }
+
+    boolean exclude() {
+        return exclude;
+    }
+
+    String scenarioName() {
+        return scenarioName;
+    }
+
+    String description() {
+        return description;
+    }
+
+    int virtualUsers() {
+        return virtualUsers;
+    }
+
+    int errorSla() {
+        return errorSla;
+    }
+
+    long rtSla() {
+        return rtSla;
+    }
+
+    String rtMetric() {
+        return rtMetric;
+    }
+
+    boolean helpRequested() {
+        return helpRequested;
+    }
+
+    boolean hasErrorSla() {
+        return errorSla > 0;
+    }
+
+    boolean hasRtSla() {
+        return rtSla > 0;
+    }
 
     // ─────────────────────────────────────────────────────────────
     // Parsing
     // ─────────────────────────────────────────────────────────────
+
+    List<String> errors() {
+        return errors;
+    }
 
     private void doParse(String[] args) {
         int i = 0;
         while (i < args.length) {
             String arg = args[i];
             switch (arg) {
-                case "-i", "--input"          -> inputFile     = nextValue(args, i++, arg);
-                case "-o", "--output"         -> outputFile    = nextValue(args, i++, arg);
-                case "--provider"             -> provider      = nextValue(args, i++, arg);
-                case "--config"               -> configFile    = nextValue(args, i++, arg);
-                case "--start-offset"         -> startOffset   = nextInt(args, i++, arg);
-                case "--end-offset"           -> endOffset     = nextInt(args, i++, arg);
-                case "--percentile"           -> percentile    = nextInt(args, i++, arg);
-                case "--chart-interval"       -> chartInterval = nextInt(args, i++, arg);
-                case "--search"               -> search        = nextValue(args, i++, arg);
-                case "--regex"                -> regex         = true;
-                case "--exclude"              -> exclude       = true;
-                case "--scenario-name"        -> scenarioName  = nextValue(args, i++, arg);
-                case "--description"          -> description   = nextValue(args, i++, arg);
-                case "--virtual-users"        -> virtualUsers  = nextInt(args, i++, arg);
-                case "--error-sla"            -> errorSla      = nextInt(args, i++, arg);
-                case "--rt-sla"               -> rtSla         = nextLong(args, i++, arg);
-                case "--rt-metric"            -> rtMetric      = nextValue(args, i++, arg);
-                case "--help", "-h"           -> helpRequested = true;
+                case "-i", "--input" -> inputFile = nextValue(args, i++, arg);
+                case "-o", "--output" -> outputFile = nextValue(args, i++, arg);
+                case "--provider" -> provider = nextValue(args, i++, arg);
+                case "--config" -> configFile = nextValue(args, i++, arg);
+                case "--start-offset" -> startOffset = nextInt(args, i++, arg);
+                case "--end-offset" -> endOffset = nextInt(args, i++, arg);
+                case "--percentile" -> percentile = nextInt(args, i++, arg);
+                case "--chart-interval" -> chartInterval = nextInt(args, i++, arg);
+                case "--search" -> search = nextValue(args, i++, arg);
+                case "--regex" -> regex = true;
+                case "--exclude" -> exclude = true;
+                case "--scenario-name" -> scenarioName = nextValue(args, i++, arg);
+                case "--description" -> description = nextValue(args, i++, arg);
+                case "--virtual-users" -> virtualUsers = nextInt(args, i++, arg);
+                case "--error-sla" -> errorSla = nextInt(args, i++, arg);
+                case "--rt-sla" -> rtSla = nextLong(args, i++, arg);
+                case "--rt-metric" -> rtMetric = nextValue(args, i++, arg);
+                case "--help", "-h" -> helpRequested = true;
                 default -> errors.add("Unknown argument: " + arg);
             }
             i++;
@@ -153,6 +278,10 @@ final class CliArgs {
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Validation
+    // ─────────────────────────────────────────────────────────────
+
     private long nextLong(String[] args, int current, String flag) {
         String val = nextValue(args, current, flag);
         if (val == null) return 0;
@@ -165,7 +294,7 @@ final class CliArgs {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Validation
+    // Help text
     // ─────────────────────────────────────────────────────────────
 
     private void validate() {
@@ -216,76 +345,5 @@ final class CliArgs {
         // Normalise provider to lowercase
         if (provider != null)
             provider = provider.toLowerCase();
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Help text
-    // ─────────────────────────────────────────────────────────────
-
-    static String helpText() {
-        return """
-                JAAR — JTL AI Analysis & Reporting  (CLI Mode)
-
-                Usage:
-                  jaar-cli-report.sh  [options]     (macOS / Linux)
-                  jaar-cli-report.bat [options]     (Windows)
-
-                  Place the wrapper script in $JMETER_HOME/bin/.
-                  The plugin JAR must be in $JMETER_HOME/lib/ext/.
-
-                Required:
-                  -i, --input FILE            JTL/CSV file path
-                  --provider STRING           provider name, case-insensitive
-                                              (groq, openai, claude, gemini, mistral, deepseek)
-                  --config FILE               path to ai-reporter.properties
-
-                Output:
-                  -o, --output FILE           HTML report output path (default: ./report.html)
-
-                Filter Options:
-                  --start-offset INT          seconds to trim from start
-                  --end-offset INT            seconds to trim from end
-                  --percentile INT            percentile 1-99 (default: 90)
-                  --chart-interval INT        seconds per chart bucket, 0=auto (default: 0)
-                  --search STRING             label filter text (include mode by default)
-                  --regex                     treat --search as regex
-                  --exclude                   exclude matching transactions (default: include)
-
-                Report Metadata:
-                  --scenario-name STRING      scenario name for report header
-                  --description STRING        scenario description
-                  --virtual-users INT         virtual user count for report header
-
-                SLA Thresholds:
-                  --error-sla INT             error rate threshold % (1-99)
-                  --rt-sla LONG               response time threshold in ms
-                  --rt-metric avg|percentile  which RT column for --rt-sla (default: percentile)
-
-                Help:
-                  -h, --help                  print this message and exit
-
-                Exit Codes:
-                  0   AI verdict PASS — pipeline continues
-                  1   AI verdict FAIL — pipeline gate fails
-                  2   AI verdict UNDECISIVE — pipeline continues
-                  3   Invalid arguments
-                  4   JTL parse error
-                  5   AI provider error (key, ping, or API failure)
-                  6   Report write error
-                  7   Unexpected error — full stack trace printed to stderr
-
-                Examples:
-                  # Minimal
-                  jaar-cli-report.sh -i results.jtl --provider groq --config ai-reporter.properties
-
-                  # Full
-                  jaar-cli-report.sh \\
-                    -i results.jtl -o report.html \\
-                    --provider openai --config /path/to/ai-reporter.properties \\
-                    --start-offset 10 --end-offset 300 --percentile 95 \\
-                    --chart-interval 60 --search "Login" \\
-                    --scenario-name "Load Test" --description "Peak hour" --virtual-users 200 \\
-                    --error-sla 5 --rt-sla 2000 --rt-metric percentile
-                """;
     }
 }

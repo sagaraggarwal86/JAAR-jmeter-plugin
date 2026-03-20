@@ -22,7 +22,7 @@ import static com.personal.jmeter.listener.AggregateReportPanel.*;
  */
 final class ReportPanelBuilder {
 
-    private static final int TABLE_SCROLL_WIDTH  = 900;
+    private static final int TABLE_SCROLL_WIDTH = 900;
     private static final int TABLE_SCROLL_HEIGHT = 250;
 
     // ── Filter / time fields ──────────────────────────────────────
@@ -30,43 +30,27 @@ final class ReportPanelBuilder {
     private final JTextField endOffsetField;
     private final JTextField percentileField;
     private final JTextField transactionSearchField;
-    private final JCheckBox  regexCheckBox;
+    private final JCheckBox regexCheckBox;
     private final JComboBox<String> filterModeCombo;
     private final JTextField startTimeField;
     private final JTextField endTimeField;
     private final JTextField durationField;
 
     // ── SLA fields ───────────────────────────────────────────────
-    private final JTextField        errorPctSlaField;
+    private final JTextField errorPctSlaField;
     private final JComboBox<String> rtMetricCombo;
-    private final JTextField        rtThresholdSlaField;
+    private final JTextField rtThresholdSlaField;
 
     // ── Table ────────────────────────────────────────────────────
-    private final JTable              resultsTable;
+    private final JTable resultsTable;
     private final JCheckBoxMenuItem[] columnMenuItems;
-    private final TableColumn[]       allTableColumns;
-    private final TablePopulator      tablePopulator;
+    private final TableColumn[] allTableColumns;
+    private final TablePopulator tablePopulator;
 
     // ─────────────────────────────────────────────────────────────
     // Header-click callback
     // ─────────────────────────────────────────────────────────────
-
-    /**
-     * Callback interface forwarding header-click events back to the panel.
-     */
-    interface HeaderClickHandler {
-        /**
-         * Called when the user clicks a table-header column.
-         * @param viewCol the clicked view-column index
-         */
-        void onHeaderClick(int viewCol);
-    }
-
     private final HeaderClickHandler headerClickHandler;
-
-    // ─────────────────────────────────────────────────────────────
-    // Constructor
-    // ─────────────────────────────────────────────────────────────
 
     /**
      * Constructs the builder with all component references owned by the panel.
@@ -75,41 +59,59 @@ final class ReportPanelBuilder {
                        JTextField endOffsetField,
                        JTextField percentileField,
                        JTextField transactionSearchField,
-                       JCheckBox  regexCheckBox,
+                       JCheckBox regexCheckBox,
                        JComboBox<String> filterModeCombo,
                        JTextField startTimeField,
                        JTextField endTimeField,
                        JTextField durationField,
-                       JTextField        errorPctSlaField,
+                       JTextField errorPctSlaField,
                        JComboBox<String> rtMetricCombo,
-                       JTextField        rtThresholdSlaField,
-                       JTable     resultsTable,
+                       JTextField rtThresholdSlaField,
+                       JTable resultsTable,
                        JCheckBoxMenuItem[] columnMenuItems,
-                       TableColumn[]       allTableColumns,
-                       TablePopulator      tablePopulator,
-                       HeaderClickHandler  headerClickHandler) {
-        this.startOffsetField       = startOffsetField;
-        this.endOffsetField         = endOffsetField;
-        this.percentileField        = percentileField;
+                       TableColumn[] allTableColumns,
+                       TablePopulator tablePopulator,
+                       HeaderClickHandler headerClickHandler) {
+        this.startOffsetField = startOffsetField;
+        this.endOffsetField = endOffsetField;
+        this.percentileField = percentileField;
         this.transactionSearchField = transactionSearchField;
-        this.regexCheckBox          = regexCheckBox;
-        this.filterModeCombo        = filterModeCombo;
-        this.startTimeField         = startTimeField;
-        this.endTimeField           = endTimeField;
-        this.durationField          = durationField;
-        this.errorPctSlaField       = errorPctSlaField;
-        this.rtMetricCombo          = rtMetricCombo;
-        this.rtThresholdSlaField    = rtThresholdSlaField;
-        this.resultsTable           = resultsTable;
-        this.columnMenuItems        = columnMenuItems;
-        this.allTableColumns        = allTableColumns;
-        this.tablePopulator         = tablePopulator;
-        this.headerClickHandler     = headerClickHandler;
+        this.regexCheckBox = regexCheckBox;
+        this.filterModeCombo = filterModeCombo;
+        this.startTimeField = startTimeField;
+        this.endTimeField = endTimeField;
+        this.durationField = durationField;
+        this.errorPctSlaField = errorPctSlaField;
+        this.rtMetricCombo = rtMetricCombo;
+        this.rtThresholdSlaField = rtThresholdSlaField;
+        this.resultsTable = resultsTable;
+        this.columnMenuItems = columnMenuItems;
+        this.allTableColumns = allTableColumns;
+        this.tablePopulator = tablePopulator;
+        this.headerClickHandler = headerClickHandler;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Constructor
+    // ─────────────────────────────────────────────────────────────
+
+    private static JLabel compactLabel(String text) {
+        JLabel l = new JLabel(text);
+        l.setFont(FONT_REGULAR);
+        return l;
     }
 
     // ─────────────────────────────────────────────────────────────
     // Panel builders
     // ─────────────────────────────────────────────────────────────
+
+    private static JTextField compactReadOnlyField(JTextField f, int columns) {
+        f.setFont(FONT_REGULAR);
+        f.setEditable(false);
+        f.setColumns(columns);
+        f.setBackground(new Color(240, 240, 240));
+        return f;
+    }
 
     /**
      * Builds the Filter Settings panel — all controls in a single row.
@@ -174,7 +176,7 @@ final class ReportPanelBuilder {
     JPanel buildTimeInfoAndSlaRow() {
         JPanel row = new JPanel(new BorderLayout(6, 0));
         row.add(buildTimeInfoPanel(), BorderLayout.CENTER);
-        row.add(buildSlaPanel(),      BorderLayout.EAST);
+        row.add(buildSlaPanel(), BorderLayout.EAST);
         return row;
     }
 
@@ -236,6 +238,10 @@ final class ReportPanelBuilder {
         return panel;
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Column dropdown
+    // ─────────────────────────────────────────────────────────────
+
     /**
      * Builds and configures the table scroll pane, wiring the header-click listener
      * and installing the sort-arrow header renderer.
@@ -278,7 +284,7 @@ final class ReportPanelBuilder {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Column dropdown
+    // Static layout helpers
     // ─────────────────────────────────────────────────────────────
 
     private JButton buildColumnDropdown() {
@@ -302,21 +308,15 @@ final class ReportPanelBuilder {
         return btn;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Static layout helpers
-    // ─────────────────────────────────────────────────────────────
-
-    private static JLabel compactLabel(String text) {
-        JLabel l = new JLabel(text);
-        l.setFont(FONT_REGULAR);
-        return l;
-    }
-
-    private static JTextField compactReadOnlyField(JTextField f, int columns) {
-        f.setFont(FONT_REGULAR);
-        f.setEditable(false);
-        f.setColumns(columns);
-        f.setBackground(new Color(240, 240, 240));
-        return f;
+    /**
+     * Callback interface forwarding header-click events back to the panel.
+     */
+    interface HeaderClickHandler {
+        /**
+         * Called when the user clicks a table-header column.
+         *
+         * @param viewCol the clicked view-column index
+         */
+        void onHeaderClick(int viewCol);
     }
 }

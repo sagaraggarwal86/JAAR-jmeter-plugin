@@ -4,6 +4,7 @@ import com.personal.jmeter.ai.AiProviderConfig;
 import com.personal.jmeter.ai.AiProviderRegistry;
 import com.personal.jmeter.parser.DelimiterResolver;
 import com.personal.jmeter.parser.JTLParser;
+import com.personal.jmeter.parser.TimestampFormatResolver;
 import org.apache.jmeter.visualizers.SamplingStatCalculator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,7 +59,7 @@ public class AggregateReportPanel extends JPanel {
             "Transaction Name", "Count", "Passed",
             "Failed", "Avg (ms)", "Min (ms)",
             "Max (ms)", "P90 (ms)", "Std. Dev.", "Error Rate", "TPS",
-            "KB/Sec", "Avg Bytes"
+            "Received KB/Sec", "Avg Bytes"
     };
     /** Model index of the configurable percentile column. */
     static final int    PERCENTILE_COL_INDEX  = 7;
@@ -424,6 +425,8 @@ public class AggregateReportPanel extends JPanel {
         opts.percentile          = readPercentile();
         opts.chartIntervalSeconds = parseIntField(chartIntervalField, 0);
         opts.delimiter           = DelimiterResolver.resolve(
+                AiReportLauncher.resolveJmeterHomeStatic());
+        opts.timestampFormatter  = TimestampFormatResolver.resolve(
                 AiReportLauncher.resolveJmeterHomeStatic());
         return opts;
     }

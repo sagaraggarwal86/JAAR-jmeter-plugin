@@ -115,6 +115,8 @@ public class JTLParser {
 
             // Previous-row fields for consecutive-row detection
             String prevTs = null, prevElapsed = null, prevDataType = null;
+            // Flag: format detection runs exactly once on the first non-blank timestamp.
+            boolean tsFormatDetected = false;
 
             String line;
             while ((line = reader.readLine()) != null) {
@@ -125,6 +127,39 @@ public class JTLParser {
                 String ts       = (tsIdx       != null && tsIdx       < values.length) ? values[tsIdx].trim()       : "";
                 String elapsed  = (elapsedIdx  != null && elapsedIdx  < values.length) ? values[elapsedIdx].trim()  : "";
                 String dataType = (dataTypeIdx != null && dataTypeIdx < values.length) ? values[dataTypeIdx].trim() : "";
+
+                // Timestamp format resolution — runs once on the first non-blank ts value.
+                // Step 1: auto-detect from file content (6 known patterns).
+                // Step 2/3: TimestampFormatResolver pre-populated by caller (user/jmeter.properties).
+                // Step 4: JtlParseException when format is unrecognised and not epoch-ms.
+                if (!tsFormatDetected && !ts.isEmpty()) {
+                    tsFormatDetected = true;
+                    // Step 1: auto-detect format from the first timestamp value in the file.
+                    // Wins over any format from properties files — the file content is
+                    // always the most authoritative source.
+                    DateTimeFormatter detected = JtlParserCore.detectTimestampFormatter(ts);
+                    if (detected != null) {
+                        options.timestampFormatter = detected;
+                    } else if (options.timestampFormatter == null) {
+                        // Steps 2 & 3: TimestampFormatResolver already pre-populated
+                        // opts.timestampFormatter from user.properties (step 2) then
+                        // jmeter.properties (step 3) before parse() was called.
+                        // Both returned null — check if epoch-ms, else throw (step 4).
+                        try {
+                            Long.parseLong(ts);
+                            // Parseable as epoch-ms — no formatter needed.
+                        } catch (NumberFormatException e) {
+                            // Step 4: format unrecognised by all steps — throw clear error.
+                            throw new JtlParseException(
+                                    "Unrecognised timestamp format in JTL file: \"" + ts + "\".\n"
+                                            + "Set jmeter.save.saveservice.timestamp_format in "
+                                            + "$JMETER_HOME/bin/user.properties or jmeter.properties "
+                                            + "to match the format used in this file.");
+                        }
+                    }
+                    // else: auto-detect returned null but resolver (steps 2/3) provided
+                    // a formatter — keep opts.timestampFormatter as-is.
+                }
 
                 // Detect sub-result: prev row is a Transaction Controller (empty
                 // dataType), this row is its child (non-empty dataType), both share
@@ -140,24 +175,20 @@ public class JTLParser {
                         && !ts.isEmpty()
                         && !prevTs.isEmpty()
                         && elapsed.equals(prevElapsed)) {
-                    try {
-                        if (Math.abs(Long.parseLong(ts) - Long.parseLong(prevTs)) <= 1) {
-                            subResultLabels.add(label);
-                        }
-                    } catch (NumberFormatException ignored) { /* skip malformed ts */ }
+                    long tsMs     = JtlParserCore.parseTimestampMs(ts,     options.timestampFormatter);
+                    long prevTsMs = JtlParserCore.parseTimestampMs(prevTs, options.timestampFormatter);
+                    if (tsMs > 0 && prevTsMs > 0 && Math.abs(tsMs - prevTsMs) <= 1) {
+                        subResultLabels.add(label);
+                    }
                 }
 
                 if (!label.isEmpty()) allLabels.add(label);
 
                 if (!ts.isEmpty()) {
-                    try {
-                        long tsLong = Long.parseLong(ts);
-                        if (tsLong > 0 && tsLong < minTimestamp) minTimestamp = tsLong;
-                        if (tsLong > maxTimestamp)               maxTimestamp = tsLong;
-                    } catch (NumberFormatException e) {
-                        if (log.isDebugEnabled()) {
-                            log.debug("parse: non-numeric timeStamp skipped. value={}", ts);
-                        }
+                    long tsLong = JtlParserCore.parseTimestampMs(ts, options.timestampFormatter);
+                    if (tsLong > 0) {
+                        if (tsLong < minTimestamp) minTimestamp = tsLong;
+                        if (tsLong > maxTimestamp) maxTimestamp = tsLong;
                     }
                 }
 
@@ -230,8 +261,21 @@ public class JTLParser {
                 // made on the same line.
                 String[] tokens = JtlParserCore.splitCsvLine(line, delimiter);
                 SampleResult sr = JtlParserCore.parseLineTokens(tokens, colMap);
-                if (sr == null
-                        || subResultLabels.contains(sr.getSampleLabel())
+                if (sr == null) continue;
+
+                // Re-parse timestamp when it is 0 — indicates a formatted date string
+                // (e.g. "2023/11/15 10:30:00.123") that Long.parseLong could not read.
+                // Must happen before shouldInclude, which uses sr.getTimeStamp() for
+                // start/end offset filtering.
+                if (sr.getTimeStamp() == 0
+                        && tsIdx != null && tsIdx < tokens.length
+                        && !tokens[tsIdx].isEmpty()) {
+                    long parsedTs = JtlParserCore.parseTimestampMs(
+                            tokens[tsIdx], options.timestampFormatter);
+                    if (parsedTs > 0) sr.setTimeStamp(parsedTs);
+                }
+
+                if (subResultLabels.contains(sr.getSampleLabel())
                         || !JtlParserCore.shouldInclude(sr, options, hasInclude, hasExclude, hasOffset)) {
                     continue;
                 }
@@ -263,10 +307,16 @@ public class JTLParser {
                     errorTypeCount.merge(key, 1L, Long::sum);
                 }
 
-                long sampleStart = sr.getTimeStamp();
-                long sampleEnd   = sampleStart + sr.getTime();
-                if (sampleStart < testStartMs) testStartMs = sampleStart;
-                if (sampleEnd   > testEndMs)   testEndMs   = sampleEnd;
+                // Read sampleStart from the raw token directly — immune to any
+                // SampleResult internal state changes caused by setStampAndTime()
+                // or JMeter version differences in getTimeStamp() behaviour.
+                // rawElapsed is already on the stack; sampleEnd uses it directly.
+                long sampleStart = (tsIdx != null && tsIdx < tokens.length)
+                        ? JtlParserCore.parseTimestampMs(tokens[tsIdx], options.timestampFormatter)
+                        : sr.getTimeStamp();
+                long sampleEnd   = sampleStart + rawElapsed;
+                if (sampleStart > 0 && sampleStart < testStartMs) testStartMs = sampleStart;
+                if (sampleEnd   > testEndMs)                       testEndMs   = sampleEnd;
 
                 // Test-aligned bucket key: anchor to options.minTimestamp so the
                 // first bucket always starts exactly at test start, not at the
@@ -598,5 +648,27 @@ public class JTLParser {
          * time-series charts.</p>
          */
         public int chartIntervalSeconds = 0;
+
+        /**
+         * {@link java.time.format.DateTimeFormatter} for parsing formatted timestamps
+         * from JTL/CSV files (e.g. {@code 2026/03/20 14:08:39.123}).
+         *
+         * <p>{@code null} (default) = epoch-millisecond mode — standard JMeter behaviour.</p>
+         *
+         * <h4>Resolution order (applied in {@link JTLParser#parse})</h4>
+         * <ol>
+         *   <li><b>Auto-detection</b> — {@link JtlParserCore#detectTimestampFormatter}
+         *       inspects the first timestamp value in the file and matches it against
+         *       6 known JMeter datetime patterns. Wins when a match is found.</li>
+         *   <li><b>user.properties</b> — {@code jmeter.save.saveservice.timestamp_format}
+         *       from {@code $JMETER_HOME/bin/user.properties}; pre-populated by callers
+         *       via {@link TimestampFormatResolver#resolve} before calling {@code parse}.</li>
+         *   <li><b>jmeter.properties</b> — same property from
+         *       {@code $JMETER_HOME/bin/jmeter.properties}; fallback when step 2 absent.</li>
+         *   <li><b>Error</b> — {@link JtlParseException} thrown when the format is not
+         *       epoch-ms and all above steps fail.</li>
+         * </ol>
+         */
+        public java.time.format.DateTimeFormatter timestampFormatter = null;
     }
 }

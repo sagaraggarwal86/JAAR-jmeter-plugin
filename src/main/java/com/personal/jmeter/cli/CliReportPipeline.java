@@ -5,6 +5,7 @@ import com.personal.jmeter.listener.TransactionFilter;
 import com.personal.jmeter.listener.TablePopulator;
 import com.personal.jmeter.parser.DelimiterResolver;
 import com.personal.jmeter.parser.JTLParser;
+import com.personal.jmeter.parser.TimestampFormatResolver;
 import org.apache.jmeter.visualizers.SamplingStatCalculator;
 
 import java.io.IOException;
@@ -140,6 +141,7 @@ final class CliReportPipeline {
         opts.percentile          = args.percentile();
         opts.chartIntervalSeconds = args.chartInterval();
         opts.delimiter           = DelimiterResolver.resolve(resolveJmeterHome());
+        opts.timestampFormatter  = TimestampFormatResolver.resolve(resolveJmeterHome());
         return opts;
     }
 

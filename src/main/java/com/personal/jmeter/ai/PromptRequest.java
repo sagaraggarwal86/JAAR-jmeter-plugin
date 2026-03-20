@@ -28,7 +28,7 @@ public record PromptRequest(
         String endTime,
         String duration,
         String threadGroupName,
-        int    configuredPercentile,
+        int configuredPercentile,
         String errorSlaThresholdPct,
         String rtSlaThresholdMs,
         String rtSlaMetric) {
@@ -40,16 +40,16 @@ public record PromptRequest(
      * and null SLA sentinel fields to "Not configured".
      */
     public PromptRequest {
-        users               = Objects.requireNonNullElse(users, "");
-        scenarioName        = Objects.requireNonNullElse(scenarioName, "");
-        scenarioDesc        = Objects.requireNonNullElse(scenarioDesc, "");
-        startTime           = Objects.requireNonNullElse(startTime, "");
-        endTime             = Objects.requireNonNullElse(endTime, "");
-        duration            = Objects.requireNonNullElse(duration, "");
-        threadGroupName     = Objects.requireNonNullElse(threadGroupName, "");
+        users = Objects.requireNonNullElse(users, "");
+        scenarioName = Objects.requireNonNullElse(scenarioName, "");
+        scenarioDesc = Objects.requireNonNullElse(scenarioDesc, "");
+        startTime = Objects.requireNonNullElse(startTime, "");
+        endTime = Objects.requireNonNullElse(endTime, "");
+        duration = Objects.requireNonNullElse(duration, "");
+        threadGroupName = Objects.requireNonNullElse(threadGroupName, "");
         errorSlaThresholdPct = Objects.requireNonNullElse(errorSlaThresholdPct, NOT_CONFIGURED);
-        rtSlaThresholdMs    = Objects.requireNonNullElse(rtSlaThresholdMs, NOT_CONFIGURED);
-        rtSlaMetric         = Objects.requireNonNullElse(rtSlaMetric, NOT_CONFIGURED);
+        rtSlaThresholdMs = Objects.requireNonNullElse(rtSlaThresholdMs, NOT_CONFIGURED);
+        rtSlaMetric = Objects.requireNonNullElse(rtSlaMetric, NOT_CONFIGURED);
     }
 
     /**

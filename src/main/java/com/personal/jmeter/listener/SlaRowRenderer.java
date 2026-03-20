@@ -1,6 +1,7 @@
 package com.personal.jmeter.listener;
 
 import com.personal.jmeter.parser.JTLParser;
+
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
@@ -43,16 +44,48 @@ final class SlaRowRenderer extends DefaultTableCellRenderer {
      */
     SlaRowRenderer(Supplier<SlaConfig> slaConfigSupplier,
                    int errorRateColIdx, int avgColIdx,
-                   int pnnColIdx,       int nameColIdx) {
+                   int pnnColIdx, int nameColIdx) {
         this.slaConfigSupplier = slaConfigSupplier;
-        this.errorRateColIdx   = errorRateColIdx;
-        this.avgColIdx         = avgColIdx;
-        this.pnnColIdx         = pnnColIdx;
-        this.nameColIdx        = nameColIdx;
+        this.errorRateColIdx = errorRateColIdx;
+        this.avgColIdx = avgColIdx;
+        this.pnnColIdx = pnnColIdx;
+        this.nameColIdx = nameColIdx;
     }
 
     // ─────────────────────────────────────────────────────────────
     // Renderer contract
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Strips the trailing {@code %} from an Error Rate cell before parsing.
+     */
+    private static double parseErrorRate(Object val) {
+        if (val == null) return 0;
+        try {
+            return Double.parseDouble(val.toString().replace("%", "").trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Breach evaluation
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Parses a plain numeric cell value.
+     */
+    private static double parseDouble(Object val) {
+        if (val == null) return 0;
+        try {
+            return Double.parseDouble(val.toString().trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Parse helpers
     // ─────────────────────────────────────────────────────────────
 
     @Override
@@ -90,10 +123,6 @@ final class SlaRowRenderer extends DefaultTableCellRenderer {
         return c;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Breach evaluation
-    // ─────────────────────────────────────────────────────────────
-
     private boolean isBreach(JTable table, int row, int modelCol, SlaConfig config) {
         if (modelCol == errorRateColIdx && config.isErrorPctEnabled()) {
             return parseErrorRate(table.getModel().getValueAt(row, errorRateColIdx))
@@ -112,29 +141,5 @@ final class SlaRowRenderer extends DefaultTableCellRenderer {
                     > config.rtThresholdMs;
         }
         return false;
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Parse helpers
-    // ─────────────────────────────────────────────────────────────
-
-    /** Strips the trailing {@code %} from an Error Rate cell before parsing. */
-    private static double parseErrorRate(Object val) {
-        if (val == null) return 0;
-        try {
-            return Double.parseDouble(val.toString().replace("%", "").trim());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
-    /** Parses a plain numeric cell value. */
-    private static double parseDouble(Object val) {
-        if (val == null) return 0;
-        try {
-            return Double.parseDouble(val.toString().trim());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 }

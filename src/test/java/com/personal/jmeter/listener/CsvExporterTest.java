@@ -132,14 +132,18 @@ class CsvExporterTest {
             return new CsvExporter(new JPanel(), model, cols, items, () -> sla);
         }
 
-        /** Creates a model with ALL_COLUMNS and adds the given rows. */
+        /**
+         * Creates a model with ALL_COLUMNS and adds the given rows.
+         */
         private DefaultTableModel modelWith(Object[]... rows) {
             DefaultTableModel model = new DefaultTableModel(AggregateReportPanel.ALL_COLUMNS, 0);
             for (Object[] row : rows) model.addRow(row);
             return model;
         }
 
-        /** Standard data row: name, count, passed, failed, avg, min, max, p90, stddev, errRate, tps, kb, avgBytes */
+        /**
+         * Standard data row: name, count, passed, failed, avg, min, max, p90, stddev, errRate, tps, kb, avgBytes
+         */
         private Object[] dataRow(String name, String avg, String p90, String errorRate) {
             return new Object[]{name, 100L, 95L, 5L, avg, "10", "500", p90, "50.0", errorRate, "10.0/sec", "5.00", "512.0"};
         }
@@ -291,8 +295,8 @@ class CsvExporterTest {
         @DisplayName("multiple rows with different SLA outcomes")
         void multipleRows() throws IOException {
             DefaultTableModel model = modelWith(
-                    dataRow("Login",    "200",  "1500", "2.00%"),
-                    dataRow("Checkout", "200",  "3000", "8.00%"),
+                    dataRow("Login", "200", "1500", "2.00%"),
+                    dataRow("Checkout", "200", "3000", "8.00%"),
                     totalRow("200", "2000", "5.00%"));
             SlaConfig sla = SlaConfig.from("5", "2000", SlaConfig.RtMetric.PNN, 90);
             List<String> lines = writeCsv(buildExporter(model, sla));

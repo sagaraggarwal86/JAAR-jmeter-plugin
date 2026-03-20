@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.personal.jmeter.parser.JTLParser;
+
 import java.util.*;
 
 /**
@@ -38,8 +39,14 @@ import java.util.*;
  */
 public class PromptBuilder {
 
+    /**
+     * Fallback error-rate anomaly threshold (%) used when no user SLA is configured.
+     * When a user SLA is configured via the UI or CLI, that value replaces this
+     * threshold so that anomaly detection and SLA evaluation share a single
+     * consistent cut-off. See {@link #parseErrorSlaThreshold(String)}.
+     */
+    static final double THRESHOLD_ERROR_PCT = 1.0;
     private static final Logger log = LoggerFactory.getLogger(PromptBuilder.class);
-
     private static final Gson GSON = new GsonBuilder().create(); // compact JSON — reduces AI token payload
     private static final double MEDIAN = 0.50;
     /**
@@ -74,50 +81,22 @@ public class PromptBuilder {
      */
     private static final int MAX_ERROR_ENDPOINTS = 15;
     private static final String KEY_ERROR_RATE_PCT = "errorRatePct";
-
     // ── Anomaly thresholds ───────────────────────────────────────
-    private static final double THRESHOLD_AVG_MS        = 2_000.0;
-    private static final double THRESHOLD_PCT_MS        = 3_000.0;
-    /**
-     * Fallback error-rate anomaly threshold (%) used when no user SLA is configured.
-     * When a user SLA is configured via the UI or CLI, that value replaces this
-     * threshold so that anomaly detection and SLA evaluation share a single
-     * consistent cut-off. See {@link #parseErrorSlaThreshold(String)}.
-     */
-    static final double THRESHOLD_ERROR_PCT      = 1.0;
+    private static final double THRESHOLD_AVG_MS = 2_000.0;
+    private static final double THRESHOLD_PCT_MS = 3_000.0;
     private static final double THRESHOLD_STD_DEV_RATIO = 0.5;
 
-    /** Sentinel returned by {@link #parseErrorSlaThreshold} when no SLA is configured. */
+    /**
+     * Sentinel returned by {@link #parseErrorSlaThreshold} when no SLA is configured.
+     */
     private static final double NO_ERROR_SLA = -1.0;
 
     // ─────────────────────────────────────────────────────────────
     // Latency context record
     // ─────────────────────────────────────────────────────────────
-
     /**
-     * Carries the three Latency/Connect fields derived during JTL parsing,
-     * and needed by the AI prompt's Advanced Web Diagnostics section.
-     *
-     * <p>Bundled as a record to keep {@link #build}'s parameter count bounded
-     * and to give the three values a named, cohesive type.</p>
-     *
-     * @param avgLatencyMs   average Latency (TTFB) in ms across all samples;
-     *                       0 when {@code latencyPresent} is false
-     * @param avgConnectMs   average Connect time in ms across all samples;
-     *                       0 when {@code latencyPresent} is false
-     * @param latencyPresent true iff at least one sample had a non-zero Latency value;
-     *                       false means the JTL has no usable Latency data and the
-     *                       prompt must use inferred mode for timing decomposition
+     * Resolved system prompt — loaded from file or JAR resource.
      */
-    public record LatencyContext(long avgLatencyMs, long avgConnectMs, boolean latencyPresent) {
-        /**
-         * Sentinel for absent latency data — used when no JTL has been parsed
-         * or all Latency values were zero.  Causes the prompt to enter inferred mode.
-         */
-        public static final LatencyContext ABSENT = new LatencyContext(0L, 0L, false);
-    }
-
-    /** Resolved system prompt — loaded from file or JAR resource. */
     private final String systemPrompt;
 
     /**
@@ -141,13 +120,13 @@ public class PromptBuilder {
         this("You are a performance engineer. Analyse the JMeter results and report findings.");
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Public API
-    // ─────────────────────────────────────────────────────────────
-
     private static double round2(double value) {
         return Math.round(value * 100.0) / 100.0;
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Public API
+    // ─────────────────────────────────────────────────────────────
 
     /**
      * Safely extracts a {@code double} from a map value without unchecked casts.
@@ -160,136 +139,9 @@ public class PromptBuilder {
         return (value instanceof Number n) ? n.doubleValue() : 0.0;
     }
 
-    /**
-     * Convenience overload — delegates to
-     * {@link #build(Map, int, PromptRequest, List, LatencyContext, List)}
-     * with an empty {@code timeBuckets} list, disabling TPS plateau assessment.
-     * Used by tests and callers that do not have time-bucket data available.
-     *
-     * @param results          per-label aggregated statistics; must not be null
-     * @param percentile       percentile to report (1–99)
-     * @param request          scenario context; must not be null
-     * @param errorTypeSummary top-5 failure types; empty list if no errors
-     * @param latency          Latency/Connect context; use {@link LatencyContext#ABSENT} if absent
-     * @return {@code PromptContent} with system and user messages
-     */
-    public PromptContent build(Map<String, SamplingStatCalculator> results,
-                               int percentile,
-                               PromptRequest request,
-                               List<Map<String, Object>> errorTypeSummary,
-                               LatencyContext latency) {
-        return build(results, percentile, request, errorTypeSummary, latency,
-                Collections.emptyList());
-    }
-
-    /**
-     * Builds the two-part AI analysis prompt from aggregated JMeter results.
-     *
-     * @param results           per-label aggregated statistics; must not be null
-     * @param percentile        percentile to report (1–99)
-     * @param request           scenario context (users, name, description, timing); must not be null
-     * @param errorTypeSummary  top-5 failure types from the full JTL; empty list if no errors
-     * @param latency           average Latency/Connect values and presence flag; use
-     *                          {@link LatencyContext#ABSENT} when no latency data is available
-     * @param timeBuckets       ordered time buckets from the JTL parser; null or empty list
-     *                          disables TPS plateau assessment in the prompt
-     * @return {@code PromptContent} with system prompt and user message suitable for the AI API
-     */
-    public PromptContent build(Map<String, SamplingStatCalculator> results,
-                               int percentile,
-                               PromptRequest request,
-                               List<Map<String, Object>> errorTypeSummary,
-                               LatencyContext latency,
-                               List<JTLParser.TimeBucket> timeBuckets) {
-        Objects.requireNonNull(results,  "results must not be null");
-        Objects.requireNonNull(request,  "request must not be null");
-        LatencyContext safeLatency = (latency != null) ? latency : LatencyContext.ABSENT;
-        List<Map<String, Object>> safeErrorTypes =
-                (errorTypeSummary != null) ? errorTypeSummary : Collections.emptyList();
-        log.info("build: building prompt. labels={}, percentile={}, errorTypes={}, latencyPresent={}",
-                results.size(), percentile, safeErrorTypes.size(), safeLatency.latencyPresent());
-
-        List<JTLParser.TimeBucket> safeBuckets =
-                (timeBuckets != null) ? timeBuckets : Collections.emptyList();
-        String userMessage = buildUserMessage(results, percentile, request, safeErrorTypes, safeLatency, safeBuckets);
-        return new PromptContent(systemPrompt, userMessage);
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // User message assembly (Standard 21 dynamic substitution)
-    // ─────────────────────────────────────────────────────────────
-
-    private String buildUserMessage(Map<String, SamplingStatCalculator> results,
-                                    int percentile, PromptRequest request,
-                                    List<Map<String, Object>> errorTypeSummary,
-                                    LatencyContext latency,
-                                    List<JTLParser.TimeBucket> timeBuckets) {
-        // Parse user SLA once here — passed to buildSummary() so anomaly detection
-        // and the SLA threshold the AI evaluates share the same numeric cut-off.
-        final double userErrorSlaThreshold = parseErrorSlaThreshold(request.errorSlaThresholdPct());
-
-        // Build summary first — needed for both JSON and the plain-text SLA verdict block
-        Map<String, Object> summary = buildSummary(results, percentile, errorTypeSummary,
-                latency, userErrorSlaThreshold, timeBuckets, request);
-        String json = GSON.toJson(summary);
-
-        // Build plain-text SLA verdict block from pre-computed summaries.
-        // Embedding the verdict as labeled plain text — not just as JSON fields —
-        // ensures all models cite the correct worst-transaction values without
-        // needing to look up JSON paths. Models reliably follow labeled text
-        // they see directly in the user message.
-        @SuppressWarnings("unchecked")
-        Map<String, Object> errSla = (Map<String, Object>) summary.get("errorSlaSummary");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> rtSla  = (Map<String, Object>) summary.get("rtSlaSummary");
-        String slaVerdictBlock = buildSlaVerdictBlock(errSla, rtSla, percentile, summary);
-
-        return """
-                DATA SOURCE: All metrics below reflect the user's currently \
-                configured view — time window, transaction scope, and \
-                percentile have already been applied to the dataset. \
-                Do not adjust, extrapolate, or question the scope. \
-                Report on what is provided.
-
-                Scenario              : %s
-                Thread Group          : %s
-                Description           : %s
-                Users                 : %s
-                Start Time            : %s
-                End Time              : %s
-                Duration              : %s
-                Configured Percentile : P%d
-
-                SLA Thresholds (user-configured):
-                  Error Rate SLA      : %s
-                  Response Time SLA   : %s on %s
-
-                %s
-
-                Global Statistics (JSON):
-                %s""".formatted(
-                orNotProvided(request.scenarioName()),
-                orNotProvided(request.threadGroupName()),
-                orNotProvided(request.scenarioDesc()),
-                orNotProvided(request.users()),
-                orNotProvided(request.startTime()),
-                orNotProvided(request.endTime()),
-                orNotProvided(request.duration()),
-                request.configuredPercentile(),
-                request.errorSlaThresholdPct(),
-                request.rtSlaThresholdMs(),
-                request.rtSlaMetric(),
-                slaVerdictBlock,
-                json);
-    }
-
     private static String orNotProvided(String value) {
         return (value == null || value.isBlank()) ? "Not provided" : value.trim();
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // SLA verdict plain-text block
-    // ─────────────────────────────────────────────────────────────
 
     /**
      * Builds a plain-text SLA verdict block for direct embedding in the user message.
@@ -309,10 +161,10 @@ public class PromptBuilder {
      *   Overall Verdict : PASS
      * </pre></p>
      *
-     * @param errSla    pre-computed error SLA summary map from {@code errorSlaSummary}
-     * @param rtSla     pre-computed RT SLA summary map from {@code rtSlaSummary}
+     * @param errSla     pre-computed error SLA summary map from {@code errorSlaSummary}
+     * @param rtSla      pre-computed RT SLA summary map from {@code rtSlaSummary}
      * @param percentile configured percentile for metric label formatting
-     * @param summary   full summary map containing {@code overallVerdictSummary}
+     * @param summary    full summary map containing {@code overallVerdictSummary}
      * @return plain-text block string
      */
     private static String buildSlaVerdictBlock(
@@ -327,9 +179,9 @@ public class PromptBuilder {
         if ("NOT_CONFIGURED".equals(errVerdict)) {
             sb.append("  Error Rate SLA    : Not configured\n");
         } else {
-            String errWorst    = String.valueOf(errSla.getOrDefault("worstLabel", ""));
-            Object errPct      = errSla.getOrDefault("worstErrorRatePct", "");
-            Object errThresh   = errSla.getOrDefault("thresholdPct", "");
+            String errWorst = String.valueOf(errSla.getOrDefault("worstLabel", ""));
+            Object errPct = errSla.getOrDefault("worstErrorRatePct", "");
+            Object errThresh = errSla.getOrDefault("thresholdPct", "");
             sb.append("  Error Rate SLA    : ").append(errVerdict)
                     .append(" | worst transaction: ").append(errWorst)
                     .append(" at ").append(errPct).append("%")
@@ -341,10 +193,10 @@ public class PromptBuilder {
         if ("NOT_CONFIGURED".equals(rtVerdict)) {
             sb.append("  Response Time SLA : Not configured\n");
         } else {
-            String rtWorst   = String.valueOf(rtSla.getOrDefault("worstLabel", ""));
-            Object rtObs     = rtSla.getOrDefault("worstObservedMs", "");
-            Object rtThresh  = rtSla.getOrDefault("thresholdMs", "");
-            String rtMetric  = String.valueOf(rtSla.getOrDefault("metric", "pnnMs"));
+            String rtWorst = String.valueOf(rtSla.getOrDefault("worstLabel", ""));
+            Object rtObs = rtSla.getOrDefault("worstObservedMs", "");
+            Object rtThresh = rtSla.getOrDefault("thresholdMs", "");
+            String rtMetric = String.valueOf(rtSla.getOrDefault("metric", "pnnMs"));
             String metricLabel = "avgMs".equals(rtMetric) ? "Avg" : "P" + percentile;
             sb.append("  Response Time SLA : ").append(rtVerdict)
                     .append(" | worst transaction: ").append(rtWorst)
@@ -363,10 +215,6 @@ public class PromptBuilder {
         return sb.toString();
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Error SLA threshold parsing
-    // ─────────────────────────────────────────────────────────────
-
     /**
      * Parses the user-configured error SLA threshold string into a numeric value.
      *
@@ -376,7 +224,7 @@ public class PromptBuilder {
      *
      * @param errorSlaThresholdPct raw SLA string from {@link PromptRequest}
      * @return parsed threshold as a positive double, or {@link #NO_ERROR_SLA} (-1)
-     *         if absent, blank, "Not configured", or unparseable
+     * if absent, blank, "Not configured", or unparseable
      */
     static double parseErrorSlaThreshold(String errorSlaThresholdPct) {
         if (errorSlaThresholdPct == null || errorSlaThresholdPct.isBlank()) return NO_ERROR_SLA;
@@ -393,7 +241,7 @@ public class PromptBuilder {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // RT SLA threshold parsing
+    // User message assembly (Standard 21 dynamic substitution)
     // ─────────────────────────────────────────────────────────────
 
     /**
@@ -418,252 +266,6 @@ public class PromptBuilder {
             return NO_ERROR_SLA;
         }
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // JSON summary — single-pass implementation
-    // ─────────────────────────────────────────────────────────────
-
-    /**
-     * Builds the JSON summary map in a single pass over the results map.
-     *
-     * <p>The effective error-rate anomaly threshold is resolved here from the
-     * user SLA when configured, falling back to {@link #THRESHOLD_ERROR_PCT}.
-     * This ensures {@code anomalyTransactions} and {@code breachedThresholds}
-     * always reflect the same threshold the user configured — eliminating the
-     * contradiction where a transaction appears as an anomaly for "errorRate > 1%"
-     * while the user's SLA is 5% and the SLA evaluation returns WITHIN.</p>
-     *
-     * @param userErrorSlaThreshold parsed user error SLA, or {@link #NO_ERROR_SLA} if absent
-     */
-    private Map<String, Object> buildSummary(Map<String, SamplingStatCalculator> results,
-                                             int percentile,
-                                             List<Map<String, Object>> errorTypeSummary,
-                                             LatencyContext latency,
-                                             double userErrorSlaThreshold,
-                                             List<JTLParser.TimeBucket> timeBuckets,
-                                             PromptRequest request) {
-        final double pFraction = percentile / 100.0;
-        final String pKey      = percentile + "thPctMs";
-
-        // Resolve effective error threshold — user SLA when configured, fallback otherwise.
-        // This is the single source of truth for what constitutes an error-rate anomaly,
-        // keeping anomaly detection and SLA evaluation consistent.
-        final double effectiveErrorThreshold = (userErrorSlaThreshold > 0)
-                ? userErrorSlaThreshold
-                : THRESHOLD_ERROR_PCT;
-
-        List<Map<String, Object>>       anomalies = new ArrayList<>();
-        List<Map<String, Object>>       errors    = new ArrayList<>();
-        List<Map<String, Object>>       allStats  = new ArrayList<>();
-        List<Map.Entry<String, Double>> ranked    = new ArrayList<>();
-
-        for (Map.Entry<String, SamplingStatCalculator> entry : results.entrySet()) {
-            if (JTLParser.TOTAL_LABEL.equals(entry.getKey())) continue;
-            SamplingStatCalculator c = entry.getValue();
-            if (c.getCount() == 0) continue;
-
-            // Compute once — shared by anomaly, error-endpoint, and slowest checks.
-            // getPercentPoint() is O(n log n) over stored sample values — calling it
-            // once per label avoids the repeated recomputation of the previous 3-pass design.
-            final double avg    = c.getMean();
-            final double pVal   = c.getPercentPoint(pFraction).doubleValue();
-            final double errPct = c.getErrorPercentage() * 100.0;
-            final double stdDev = c.getStandardDeviation();
-
-            // ── Slowest endpoints accumulator ─────────────────────────────────
-            ranked.add(Map.entry(entry.getKey(), pVal));
-
-            // ── All-transaction compact stats accumulator ────────────────────
-            // Compact 4-field entry per label — enables per-transaction RT SLA
-            // evaluation in the AI prompt. All values already computed above;
-            // no additional SamplingStatCalculator calls.
-            Map<String, Object> txStat = new LinkedHashMap<>();
-            txStat.put("label",            entry.getKey());
-            txStat.put("avgMs",            round2(avg));
-            txStat.put("pnnMs",            round2(pVal));
-            txStat.put(KEY_ERROR_RATE_PCT, round2(errPct));
-            allStats.add(txStat);
-
-            // ── Error endpoints accumulator ───────────────────────────────────
-            if (c.getErrorPercentage() > 0) {
-                final long cnt    = c.getCount();
-                final long failed = Math.min(Math.round(c.getErrorPercentage() * cnt), cnt);
-                Map<String, Object> ep = new LinkedHashMap<>();
-                ep.put("label",            entry.getKey());
-                ep.put("errorCount",       failed);
-                ep.put("totalCount",       cnt);
-                ep.put(KEY_ERROR_RATE_PCT, round2(errPct));
-                errors.add(ep);
-            }
-
-            // ── Anomaly transactions accumulator ──────────────────────────────
-            // Error-rate condition uses effectiveErrorThreshold — not the hardcoded
-            // constant — so the breach reason in breachedThresholds matches the
-            // SLA threshold the user actually configured.
-            boolean isAnomaly = avg > THRESHOLD_AVG_MS
-                    || pVal > THRESHOLD_PCT_MS
-                    || errPct > effectiveErrorThreshold
-                    || (avg > 0 && stdDev / avg > THRESHOLD_STD_DEV_RATIO);
-            if (isAnomaly) {
-                final long cnt    = c.getCount();
-                final long failed = Math.min(Math.round(c.getErrorPercentage() * cnt), cnt);
-                Map<String, Object> ep = new LinkedHashMap<>();
-                ep.put("label",                 entry.getKey());
-                ep.put("count",                 cnt);
-                ep.put("failed",                failed);
-                ep.put("avgMs",                 round2(avg));
-                ep.put("medianMs",              round2(c.getPercentPoint(MEDIAN).doubleValue()));
-                ep.put(pKey,                    round2(pVal));
-                ep.put("stdDevMs",              round2(stdDev));
-                ep.put(KEY_ERROR_RATE_PCT,      round2(errPct));
-                ep.put("throughputTPS",         round2(c.getRate()));
-                ep.put("receivedBandwidthKBps", round2(c.getKBPerSecond()));
-                // breachedThresholds: explicit list of which thresholds fired for this
-                // transaction. Uses effectiveErrorThreshold so the AI sees "errorRate > 5%"
-                // when the user configured 5% — not the internal fallback value.
-                ep.put("breachedThresholds",    buildBreachList(
-                        avg, pVal, errPct, stdDev, percentile, effectiveErrorThreshold));
-                anomalies.add(ep);
-            }
-        }
-
-        // ── Post-loop sort / trim ─────────────────────────────────────────────
-        anomalies.sort((a, b) ->
-                Double.compare(asDouble(b.get(pKey)), asDouble(a.get(pKey))));
-        errors.sort((a, b) ->
-                Double.compare(asDouble(b.get(KEY_ERROR_RATE_PCT)), asDouble(a.get(KEY_ERROR_RATE_PCT))));
-        ranked.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
-
-        // ── Threshold-based slowest selection ────────────────────────────────
-        // Instead of a fixed top-N, include transactions whose P90 exceeds
-        // medianP90 × SLOWEST_THRESHOLD_RATIO. This adapts to any JTL profile:
-        // fast systems (50ms avg) and slow systems (2000ms avg) both produce a
-        // meaningful outlier set rather than an arbitrary fixed count.
-        // Floor of SLOWEST_MIN guarantees at least 3 entries on any JTL.
-        // Cap of SLOWEST_MAX prevents token bloat on pathological distributions.
-        final double medianP90 = ranked.isEmpty() ? 0.0
-                : ranked.get(ranked.size() / 2).getValue();
-        final double slowThreshold = medianP90 * SLOWEST_THRESHOLD_RATIO;
-
-        List<String> slowest = new ArrayList<>();
-        for (Map.Entry<String, Double> e : ranked) {
-            if (slowest.size() >= SLOWEST_MAX) break;
-            // Always include up to SLOWEST_MIN; after that only if above threshold
-            if (slowest.size() < SLOWEST_MIN || e.getValue() > slowThreshold) {
-                slowest.add(e.getKey() + " (" + round2(e.getValue()) + " ms)");
-            }
-        }
-
-        // Cap errorEndpoints to MAX_ERROR_ENDPOINTS after sorting — keeps only the
-        // highest-error-rate transactions. The sort guarantees SLA-relevant entries
-        // are always retained. subList() returns a view — no copy allocation.
-        List<Map<String, Object>> cappedErrors = errors.size() > MAX_ERROR_ENDPOINTS
-                ? errors.subList(0, MAX_ERROR_ENDPOINTS)
-                : errors;
-
-        Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("globalStats",          buildGlobalStats(results, percentile, pFraction, latency));
-        summary.put("anomalyTransactions",  anomalies);
-        summary.put("errorEndpoints",       cappedErrors);
-        summary.put("errorTypeSummary",     errorTypeSummary);
-        summary.put("slowestEndpoints",     slowest);
-        // allTransactionStats: compact per-label lookup table (label, avgMs, pnnMs,
-        // errorRatePct) enabling per-transaction RT SLA evaluation in the AI prompt.
-        // Sorted by pnnMs descending so the AI can scan from worst to best.
-        allStats.sort((a, b) -> Double.compare(asDouble(b.get("pnnMs")), asDouble(a.get("pnnMs"))));
-        summary.put("allTransactionStats",  allStats);
-        // tpsSeries: compact TPS time-series enabling genuine plateau assessment.
-        // Only epochMs and tps are included — other bucket fields are redundant
-        // with globalStats and allTransactionStats. Null/empty = absent, and the
-        // prompt falls back to the DEFAULT rule (no plateau assertion).
-        summary.put("tpsSeries", buildTpsSeries(timeBuckets));
-        // rtSlaSummary: pre-computed RT SLA verdict — Java does the arithmetic
-        // so the AI never needs to compare observedMs against thresholdMs itself.
-        // This eliminates model-level numeric comparison errors entirely.
-        summary.put("rtSlaSummary",    buildRtSlaSummary(allStats, request));
-        // errorSlaSummary: pre-computed error-rate SLA verdict — mirrors rtSlaSummary.
-        // Eliminates the same class of model arithmetic errors for error-rate SLA
-        // (digit misread, comparison inversion, wrong overage calculation).
-        // Uses allStats as source — covers all 100% of transactions, not just the
-        // capped errorEndpoints list — so no transaction is silently excluded.
-        summary.put("errorSlaSummary", buildErrorSlaSummary(allStats, userErrorSlaThreshold));
-        // classificationSummary: pre-computed bottleneck classification — Java executes
-        // the decision tree (Gate 1–4) so the AI never needs to compare errorRatePct,
-        // latency_ratio, or plateau values itself. Eliminates the SLA-leaks-into-classification
-        // error observed across all providers when SLA verdicts are BREACH.
-        @SuppressWarnings("unchecked")
-        Map<String, Object> globalStats = (Map<String, Object>) summary.get("globalStats");
-        summary.put("classificationSummary", buildClassificationSummary(globalStats, timeBuckets));
-        // overallVerdictSummary: pre-computed final PASS/FAIL verdict combining SLA
-        // results with the classification-based no-SLA fallback. Java resolves the
-        // full verdict so the AI never needs to evaluate SLA + classification → verdict.
-        summary.put("overallVerdictSummary", buildOverallVerdictSummary(
-                summary.get("errorSlaSummary"),
-                summary.get("rtSlaSummary"),
-                summary.get("classificationSummary"),
-                globalStats));
-        return summary;
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Global stats — reads from the TOTAL row
-    // ─────────────────────────────────────────────────────────────
-
-    private Map<String, Object> buildGlobalStats(Map<String, SamplingStatCalculator> results,
-                                                 int percentile, double pFraction,
-                                                 LatencyContext latency) {
-        Map<String, Object> global = new LinkedHashMap<>();
-        SamplingStatCalculator total = results.get(JTLParser.TOTAL_LABEL);
-        if (total == null || total.getCount() == 0) return global;
-
-        final long totalCount  = total.getCount();
-        final long failedCount = Math.min(Math.round(total.getErrorPercentage() * totalCount), totalCount);
-
-        global.put("totalRequests",         totalCount);
-        global.put("totalPassed",           totalCount - failedCount);
-        global.put("totalFailed",           failedCount);
-        global.put("configuredPercentile",  percentile);
-        global.put("avgResponseMs",         round2(total.getMean()));
-        global.put("medianResponseMs",      round2(total.getPercentPoint(MEDIAN).doubleValue()));
-        global.put("minResponseMs",         total.getMin().longValue());
-        global.put("maxResponseMs",         total.getMax().longValue());
-        global.put(percentile + "thPctMs",  round2(total.getPercentPoint(pFraction).doubleValue()));
-        global.put("p99ResponseMs",         round2(total.getPercentPoint(0.99).doubleValue()));
-        global.put("stdDevMs",              round2(total.getStandardDeviation()));
-        global.put(KEY_ERROR_RATE_PCT,      round2(total.getErrorPercentage() * 100.0));
-        global.put("throughputTPS",         round2(total.getRate()));
-        global.put("receivedBandwidthKBps", round2(total.getKBPerSecond()));
-        // Latency decomposition fields — consumed by the Advanced Web Diagnostics
-        // section of the AI prompt to decide between direct and inferred mode.
-        global.put("avgLatencyMs",   latency.avgLatencyMs());
-        global.put("avgConnectMs",   latency.avgConnectMs());
-        global.put("latencyPresent", latency.latencyPresent());
-        return global;
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Breach list — per-transaction, called only for confirmed anomalies
-    // ─────────────────────────────────────────────────────────────
-
-    /**
-     * Builds the list of human-readable breach reasons for one anomaly transaction.
-     *
-     * <p>Each string names the breached threshold and its exact cut-off value,
-     * e.g. {@code "errorRate > 5.0%"} or {@code "avgMs > 2000ms"}. The error-rate
-     * string uses {@code errorThreshold} — not the hardcoded fallback — so the AI
-     * sees the same value the user configured as their SLA.</p>
-     *
-     * @param avg            transaction average response time (ms)
-     * @param pVal           transaction Nth-percentile response time (ms)
-     * @param errPct         transaction error rate (0–100)
-     * @param stdDev         transaction standard deviation (ms)
-     * @param percentile     configured percentile (1–99)
-     * @param errorThreshold effective error-rate threshold — user SLA or fallback
-     * @return non-empty list of breach reason strings; empty list if no condition fired
-     */
-    // ─────────────────────────────────────────────────────────────
-    // RT SLA summary — pre-computed verdict, eliminates model arithmetic
-    // ─────────────────────────────────────────────────────────────
 
     /**
      * Builds a pre-computed RT SLA evaluation summary.
@@ -695,7 +297,7 @@ public class PromptBuilder {
         double thresholdMs = parseRtSlaThreshold(request.rtSlaThresholdMs());
         if (thresholdMs <= 0) {
             result.put("configured", false);
-            result.put("verdict",    "NOT_CONFIGURED");
+            result.put("verdict", "NOT_CONFIGURED");
             return result;
         }
 
@@ -704,9 +306,9 @@ public class PromptBuilder {
                 && request.rtSlaMetric().toLowerCase().contains("avg"))
                 ? "avgMs" : "pnnMs";
 
-        result.put("configured",   true);
-        result.put("thresholdMs",  (long) thresholdMs);
-        result.put("metric",       metric);
+        result.put("configured", true);
+        result.put("thresholdMs", (long) thresholdMs);
+        result.put("metric", metric);
 
         // Find worst transaction and all breaches — pure Java arithmetic
         List<Map<String, Object>> breaches = new ArrayList<>();
@@ -715,16 +317,16 @@ public class PromptBuilder {
 
         for (Map<String, Object> tx : allStats) {
             double observed = asDouble(tx.get(metric));
-            String label    = String.valueOf(tx.get("label"));
+            String label = String.valueOf(tx.get("label"));
             if (observed > worstValue) {
                 worstValue = observed;
                 worstLabel = label;
             }
             if (observed > thresholdMs) {
                 Map<String, Object> breach = new LinkedHashMap<>();
-                breach.put("label",      label);
+                breach.put("label", label);
                 breach.put("observedMs", round2(observed));
-                breach.put("overageMs",  round2(observed - thresholdMs));
+                breach.put("overageMs", round2(observed - thresholdMs));
                 breaches.add(breach);
             }
         }
@@ -733,16 +335,16 @@ public class PromptBuilder {
         breaches.sort((a, b) ->
                 Double.compare(asDouble(b.get("observedMs")), asDouble(a.get("observedMs"))));
 
-        result.put("verdict",               breaches.isEmpty() ? "WITHIN" : "BREACH");
-        result.put("worstLabel",             worstLabel != null ? worstLabel : "");
-        result.put("worstObservedMs",        round2(worstValue));
-        result.put("worstOverageMs",         round2(worstValue - thresholdMs));
-        result.put("breachingTransactions",  breaches);
+        result.put("verdict", breaches.isEmpty() ? "WITHIN" : "BREACH");
+        result.put("worstLabel", worstLabel != null ? worstLabel : "");
+        result.put("worstObservedMs", round2(worstValue));
+        result.put("worstOverageMs", round2(worstValue - thresholdMs));
+        result.put("breachingTransactions", breaches);
         return result;
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Error Rate SLA summary — pre-computed verdict, eliminates model arithmetic
+    // SLA verdict plain-text block
     // ─────────────────────────────────────────────────────────────
 
     /**
@@ -779,30 +381,30 @@ public class PromptBuilder {
 
         if (userErrorSlaThreshold <= 0) {
             result.put("configured", false);
-            result.put("verdict",    "NOT_CONFIGURED");
+            result.put("verdict", "NOT_CONFIGURED");
             return result;
         }
 
-        result.put("configured",   true);
+        result.put("configured", true);
         result.put("thresholdPct", round2(userErrorSlaThreshold));
 
         // Find worst transaction and all breaches — pure Java arithmetic
-        List<Map<String, Object>> breaches  = new ArrayList<>();
-        String worstLabel    = null;
+        List<Map<String, Object>> breaches = new ArrayList<>();
+        String worstLabel = null;
         double worstErrorPct = -1.0;
 
         for (Map<String, Object> tx : allStats) {
             double observed = asDouble(tx.get(KEY_ERROR_RATE_PCT));
-            String label    = String.valueOf(tx.get("label"));
+            String label = String.valueOf(tx.get("label"));
             if (observed > worstErrorPct) {
                 worstErrorPct = observed;
-                worstLabel    = label;
+                worstLabel = label;
             }
             if (observed > userErrorSlaThreshold) {
                 Map<String, Object> breach = new LinkedHashMap<>();
-                breach.put("label",          label);
+                breach.put("label", label);
                 breach.put(KEY_ERROR_RATE_PCT, round2(observed));
-                breach.put("overagePct",      round2(observed - userErrorSlaThreshold));
+                breach.put("overagePct", round2(observed - userErrorSlaThreshold));
                 breaches.add(breach);
             }
         }
@@ -812,16 +414,16 @@ public class PromptBuilder {
                 Double.compare(asDouble(b.get(KEY_ERROR_RATE_PCT)),
                         asDouble(a.get(KEY_ERROR_RATE_PCT))));
 
-        result.put("verdict",              breaches.isEmpty() ? "WITHIN" : "BREACH");
-        result.put("worstLabel",           worstLabel != null ? worstLabel : "");
-        result.put("worstErrorRatePct",    round2(worstErrorPct));
-        result.put("worstOveragePct",      round2(worstErrorPct - userErrorSlaThreshold));
+        result.put("verdict", breaches.isEmpty() ? "WITHIN" : "BREACH");
+        result.put("worstLabel", worstLabel != null ? worstLabel : "");
+        result.put("worstErrorRatePct", round2(worstErrorPct));
+        result.put("worstOveragePct", round2(worstErrorPct - userErrorSlaThreshold));
         result.put("breachingTransactions", breaches);
         return result;
     }
 
     // ─────────────────────────────────────────────────────────────
-    // TPS series builder
+    // Error SLA threshold parsing
     // ─────────────────────────────────────────────────────────────
 
     /**
@@ -854,9 +456,9 @@ public class PromptBuilder {
             return result;
         }
 
-        double avgMs    = asDouble(globalStats.getOrDefault("avgResponseMs", 0.0));
-        double p99Ms    = asDouble(globalStats.getOrDefault("p99ResponseMs", 0.0));
-        double errPct   = asDouble(globalStats.getOrDefault("errorRatePct", 0.0));
+        double avgMs = asDouble(globalStats.getOrDefault("avgResponseMs", 0.0));
+        double p99Ms = asDouble(globalStats.getOrDefault("p99ResponseMs", 0.0));
+        double errPct = asDouble(globalStats.getOrDefault("errorRatePct", 0.0));
 
         // ── Latency ratio ────────────────────────────────────────────
         double latencyRatio;
@@ -940,6 +542,10 @@ public class PromptBuilder {
         return result;
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // RT SLA threshold parsing
+    // ─────────────────────────────────────────────────────────────
+
     /**
      * Pre-computes the final PASS/FAIL verdict from SLA results and classification.
      *
@@ -965,15 +571,15 @@ public class PromptBuilder {
 
         Map<String, Object> result = new LinkedHashMap<>();
         Map<String, Object> err = (errSla instanceof Map) ? (Map<String, Object>) errSla : Map.of();
-        Map<String, Object> rt  = (rtSla instanceof Map)  ? (Map<String, Object>) rtSla  : Map.of();
+        Map<String, Object> rt = (rtSla instanceof Map) ? (Map<String, Object>) rtSla : Map.of();
         Map<String, Object> cls = (classification instanceof Map) ? (Map<String, Object>) classification : Map.of();
 
         String errVerdict = String.valueOf(err.getOrDefault("verdict", "NOT_CONFIGURED"));
-        String rtVerdict  = String.valueOf(rt.getOrDefault("verdict", "NOT_CONFIGURED"));
-        String label      = String.valueOf(cls.getOrDefault("label", "THROUGHPUT-BOUND"));
+        String rtVerdict = String.valueOf(rt.getOrDefault("verdict", "NOT_CONFIGURED"));
+        String label = String.valueOf(cls.getOrDefault("label", "THROUGHPUT-BOUND"));
 
         boolean errConfigured = !"NOT_CONFIGURED".equals(errVerdict);
-        boolean rtConfigured  = !"NOT_CONFIGURED".equals(rtVerdict);
+        boolean rtConfigured = !"NOT_CONFIGURED".equals(rtVerdict);
         boolean anyConfigured = errConfigured || rtConfigured;
 
         if (anyConfigured) {
@@ -1023,6 +629,10 @@ public class PromptBuilder {
         return result;
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // JSON summary — single-pass implementation
+    // ─────────────────────────────────────────────────────────────
+
     /**
      * Builds a compact TPS time-series from the parsed time buckets.
      *
@@ -1048,12 +658,16 @@ public class PromptBuilder {
         List<Map<String, Object>> series = new ArrayList<>(timeBuckets.size());
         for (JTLParser.TimeBucket b : timeBuckets) {
             Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("t",   b.epochMs);
+            entry.put("t", b.epochMs);
             entry.put("tps", round2(b.tps));
             series.add(entry);
         }
         return series;
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Global stats — reads from the TOTAL row
+    // ─────────────────────────────────────────────────────────────
 
     private static List<String> buildBreachList(double avg, double pVal, double errPct,
                                                 double stdDev, int percentile,
@@ -1068,5 +682,393 @@ public class PromptBuilder {
         if (avg > 0 && stdDev / avg > THRESHOLD_STD_DEV_RATIO)
             breaches.add("highVariability (stdDev/avg=" + round2(stdDev / avg) + ")");
         return breaches;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Breach list — per-transaction, called only for confirmed anomalies
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Builds the list of human-readable breach reasons for one anomaly transaction.
+     *
+     * <p>Each string names the breached threshold and its exact cut-off value,
+     * e.g. {@code "errorRate > 5.0%"} or {@code "avgMs > 2000ms"}. The error-rate
+     * string uses {@code errorThreshold} — not the hardcoded fallback — so the AI
+     * sees the same value the user configured as their SLA.</p>
+     *
+     * @param avg            transaction average response time (ms)
+     * @param pVal           transaction Nth-percentile response time (ms)
+     * @param errPct         transaction error rate (0–100)
+     * @param stdDev         transaction standard deviation (ms)
+     * @param percentile     configured percentile (1–99)
+     * @param errorThreshold effective error-rate threshold — user SLA or fallback
+     * @return non-empty list of breach reason strings; empty list if no condition fired
+     */
+    // ─────────────────────────────────────────────────────────────
+    // RT SLA summary — pre-computed verdict, eliminates model arithmetic
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Convenience overload — delegates to
+     * {@link #build(Map, int, PromptRequest, List, LatencyContext, List)}
+     * with an empty {@code timeBuckets} list, disabling TPS plateau assessment.
+     * Used by tests and callers that do not have time-bucket data available.
+     *
+     * @param results          per-label aggregated statistics; must not be null
+     * @param percentile       percentile to report (1–99)
+     * @param request          scenario context; must not be null
+     * @param errorTypeSummary top-5 failure types; empty list if no errors
+     * @param latency          Latency/Connect context; use {@link LatencyContext#ABSENT} if absent
+     * @return {@code PromptContent} with system and user messages
+     */
+    public PromptContent build(Map<String, SamplingStatCalculator> results,
+                               int percentile,
+                               PromptRequest request,
+                               List<Map<String, Object>> errorTypeSummary,
+                               LatencyContext latency) {
+        return build(results, percentile, request, errorTypeSummary, latency,
+                Collections.emptyList());
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Error Rate SLA summary — pre-computed verdict, eliminates model arithmetic
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Builds the two-part AI analysis prompt from aggregated JMeter results.
+     *
+     * @param results          per-label aggregated statistics; must not be null
+     * @param percentile       percentile to report (1–99)
+     * @param request          scenario context (users, name, description, timing); must not be null
+     * @param errorTypeSummary top-5 failure types from the full JTL; empty list if no errors
+     * @param latency          average Latency/Connect values and presence flag; use
+     *                         {@link LatencyContext#ABSENT} when no latency data is available
+     * @param timeBuckets      ordered time buckets from the JTL parser; null or empty list
+     *                         disables TPS plateau assessment in the prompt
+     * @return {@code PromptContent} with system prompt and user message suitable for the AI API
+     */
+    public PromptContent build(Map<String, SamplingStatCalculator> results,
+                               int percentile,
+                               PromptRequest request,
+                               List<Map<String, Object>> errorTypeSummary,
+                               LatencyContext latency,
+                               List<JTLParser.TimeBucket> timeBuckets) {
+        Objects.requireNonNull(results, "results must not be null");
+        Objects.requireNonNull(request, "request must not be null");
+        LatencyContext safeLatency = (latency != null) ? latency : LatencyContext.ABSENT;
+        List<Map<String, Object>> safeErrorTypes =
+                (errorTypeSummary != null) ? errorTypeSummary : Collections.emptyList();
+        log.info("build: building prompt. labels={}, percentile={}, errorTypes={}, latencyPresent={}",
+                results.size(), percentile, safeErrorTypes.size(), safeLatency.latencyPresent());
+
+        List<JTLParser.TimeBucket> safeBuckets =
+                (timeBuckets != null) ? timeBuckets : Collections.emptyList();
+        String userMessage = buildUserMessage(results, percentile, request, safeErrorTypes, safeLatency, safeBuckets);
+        return new PromptContent(systemPrompt, userMessage);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // TPS series builder
+    // ─────────────────────────────────────────────────────────────
+
+    private String buildUserMessage(Map<String, SamplingStatCalculator> results,
+                                    int percentile, PromptRequest request,
+                                    List<Map<String, Object>> errorTypeSummary,
+                                    LatencyContext latency,
+                                    List<JTLParser.TimeBucket> timeBuckets) {
+        // Parse user SLA once here — passed to buildSummary() so anomaly detection
+        // and the SLA threshold the AI evaluates share the same numeric cut-off.
+        final double userErrorSlaThreshold = parseErrorSlaThreshold(request.errorSlaThresholdPct());
+
+        // Build summary first — needed for both JSON and the plain-text SLA verdict block
+        Map<String, Object> summary = buildSummary(results, percentile, errorTypeSummary,
+                latency, userErrorSlaThreshold, timeBuckets, request);
+        String json = GSON.toJson(summary);
+
+        // Build plain-text SLA verdict block from pre-computed summaries.
+        // Embedding the verdict as labeled plain text — not just as JSON fields —
+        // ensures all models cite the correct worst-transaction values without
+        // needing to look up JSON paths. Models reliably follow labeled text
+        // they see directly in the user message.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> errSla = (Map<String, Object>) summary.get("errorSlaSummary");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> rtSla = (Map<String, Object>) summary.get("rtSlaSummary");
+        String slaVerdictBlock = buildSlaVerdictBlock(errSla, rtSla, percentile, summary);
+
+        return """
+                DATA SOURCE: All metrics below reflect the user's currently \
+                configured view — time window, transaction scope, and \
+                percentile have already been applied to the dataset. \
+                Do not adjust, extrapolate, or question the scope. \
+                Report on what is provided.
+                
+                Scenario              : %s
+                Thread Group          : %s
+                Description           : %s
+                Users                 : %s
+                Start Time            : %s
+                End Time              : %s
+                Duration              : %s
+                Configured Percentile : P%d
+                
+                SLA Thresholds (user-configured):
+                  Error Rate SLA      : %s
+                  Response Time SLA   : %s on %s
+                
+                %s
+                
+                Global Statistics (JSON):
+                %s""".formatted(
+                orNotProvided(request.scenarioName()),
+                orNotProvided(request.threadGroupName()),
+                orNotProvided(request.scenarioDesc()),
+                orNotProvided(request.users()),
+                orNotProvided(request.startTime()),
+                orNotProvided(request.endTime()),
+                orNotProvided(request.duration()),
+                request.configuredPercentile(),
+                request.errorSlaThresholdPct(),
+                request.rtSlaThresholdMs(),
+                request.rtSlaMetric(),
+                slaVerdictBlock,
+                json);
+    }
+
+    /**
+     * Builds the JSON summary map in a single pass over the results map.
+     *
+     * <p>The effective error-rate anomaly threshold is resolved here from the
+     * user SLA when configured, falling back to {@link #THRESHOLD_ERROR_PCT}.
+     * This ensures {@code anomalyTransactions} and {@code breachedThresholds}
+     * always reflect the same threshold the user configured — eliminating the
+     * contradiction where a transaction appears as an anomaly for "errorRate > 1%"
+     * while the user's SLA is 5% and the SLA evaluation returns WITHIN.</p>
+     *
+     * @param userErrorSlaThreshold parsed user error SLA, or {@link #NO_ERROR_SLA} if absent
+     */
+    private Map<String, Object> buildSummary(Map<String, SamplingStatCalculator> results,
+                                             int percentile,
+                                             List<Map<String, Object>> errorTypeSummary,
+                                             LatencyContext latency,
+                                             double userErrorSlaThreshold,
+                                             List<JTLParser.TimeBucket> timeBuckets,
+                                             PromptRequest request) {
+        final double pFraction = percentile / 100.0;
+        final String pKey = percentile + "thPctMs";
+
+        // Resolve effective error threshold — user SLA when configured, fallback otherwise.
+        // This is the single source of truth for what constitutes an error-rate anomaly,
+        // keeping anomaly detection and SLA evaluation consistent.
+        final double effectiveErrorThreshold = (userErrorSlaThreshold > 0)
+                ? userErrorSlaThreshold
+                : THRESHOLD_ERROR_PCT;
+
+        List<Map<String, Object>> anomalies = new ArrayList<>();
+        List<Map<String, Object>> errors = new ArrayList<>();
+        List<Map<String, Object>> allStats = new ArrayList<>();
+        List<Map.Entry<String, Double>> ranked = new ArrayList<>();
+
+        for (Map.Entry<String, SamplingStatCalculator> entry : results.entrySet()) {
+            if (JTLParser.TOTAL_LABEL.equals(entry.getKey())) continue;
+            SamplingStatCalculator c = entry.getValue();
+            if (c.getCount() == 0) continue;
+
+            // Compute once — shared by anomaly, error-endpoint, and slowest checks.
+            // getPercentPoint() is O(n log n) over stored sample values — calling it
+            // once per label avoids the repeated recomputation of the previous 3-pass design.
+            final double avg = c.getMean();
+            final double pVal = c.getPercentPoint(pFraction).doubleValue();
+            final double errPct = c.getErrorPercentage() * 100.0;
+            final double stdDev = c.getStandardDeviation();
+
+            // ── Slowest endpoints accumulator ─────────────────────────────────
+            ranked.add(Map.entry(entry.getKey(), pVal));
+
+            // ── All-transaction compact stats accumulator ────────────────────
+            // Compact 4-field entry per label — enables per-transaction RT SLA
+            // evaluation in the AI prompt. All values already computed above;
+            // no additional SamplingStatCalculator calls.
+            Map<String, Object> txStat = new LinkedHashMap<>();
+            txStat.put("label", entry.getKey());
+            txStat.put("avgMs", round2(avg));
+            txStat.put("pnnMs", round2(pVal));
+            txStat.put(KEY_ERROR_RATE_PCT, round2(errPct));
+            allStats.add(txStat);
+
+            // ── Error endpoints accumulator ───────────────────────────────────
+            if (c.getErrorPercentage() > 0) {
+                final long cnt = c.getCount();
+                final long failed = Math.min(Math.round(c.getErrorPercentage() * cnt), cnt);
+                Map<String, Object> ep = new LinkedHashMap<>();
+                ep.put("label", entry.getKey());
+                ep.put("errorCount", failed);
+                ep.put("totalCount", cnt);
+                ep.put(KEY_ERROR_RATE_PCT, round2(errPct));
+                errors.add(ep);
+            }
+
+            // ── Anomaly transactions accumulator ──────────────────────────────
+            // Error-rate condition uses effectiveErrorThreshold — not the hardcoded
+            // constant — so the breach reason in breachedThresholds matches the
+            // SLA threshold the user actually configured.
+            boolean isAnomaly = avg > THRESHOLD_AVG_MS
+                    || pVal > THRESHOLD_PCT_MS
+                    || errPct > effectiveErrorThreshold
+                    || (avg > 0 && stdDev / avg > THRESHOLD_STD_DEV_RATIO);
+            if (isAnomaly) {
+                final long cnt = c.getCount();
+                final long failed = Math.min(Math.round(c.getErrorPercentage() * cnt), cnt);
+                Map<String, Object> ep = new LinkedHashMap<>();
+                ep.put("label", entry.getKey());
+                ep.put("count", cnt);
+                ep.put("failed", failed);
+                ep.put("avgMs", round2(avg));
+                ep.put("medianMs", round2(c.getPercentPoint(MEDIAN).doubleValue()));
+                ep.put(pKey, round2(pVal));
+                ep.put("stdDevMs", round2(stdDev));
+                ep.put(KEY_ERROR_RATE_PCT, round2(errPct));
+                ep.put("throughputTPS", round2(c.getRate()));
+                ep.put("receivedBandwidthKBps", round2(c.getKBPerSecond()));
+                // breachedThresholds: explicit list of which thresholds fired for this
+                // transaction. Uses effectiveErrorThreshold so the AI sees "errorRate > 5%"
+                // when the user configured 5% — not the internal fallback value.
+                ep.put("breachedThresholds", buildBreachList(
+                        avg, pVal, errPct, stdDev, percentile, effectiveErrorThreshold));
+                anomalies.add(ep);
+            }
+        }
+
+        // ── Post-loop sort / trim ─────────────────────────────────────────────
+        anomalies.sort((a, b) ->
+                Double.compare(asDouble(b.get(pKey)), asDouble(a.get(pKey))));
+        errors.sort((a, b) ->
+                Double.compare(asDouble(b.get(KEY_ERROR_RATE_PCT)), asDouble(a.get(KEY_ERROR_RATE_PCT))));
+        ranked.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
+
+        // ── Threshold-based slowest selection ────────────────────────────────
+        // Instead of a fixed top-N, include transactions whose P90 exceeds
+        // medianP90 × SLOWEST_THRESHOLD_RATIO. This adapts to any JTL profile:
+        // fast systems (50ms avg) and slow systems (2000ms avg) both produce a
+        // meaningful outlier set rather than an arbitrary fixed count.
+        // Floor of SLOWEST_MIN guarantees at least 3 entries on any JTL.
+        // Cap of SLOWEST_MAX prevents token bloat on pathological distributions.
+        final double medianP90 = ranked.isEmpty() ? 0.0
+                : ranked.get(ranked.size() / 2).getValue();
+        final double slowThreshold = medianP90 * SLOWEST_THRESHOLD_RATIO;
+
+        List<String> slowest = new ArrayList<>();
+        for (Map.Entry<String, Double> e : ranked) {
+            if (slowest.size() >= SLOWEST_MAX) break;
+            // Always include up to SLOWEST_MIN; after that only if above threshold
+            if (slowest.size() < SLOWEST_MIN || e.getValue() > slowThreshold) {
+                slowest.add(e.getKey() + " (" + round2(e.getValue()) + " ms)");
+            }
+        }
+
+        // Cap errorEndpoints to MAX_ERROR_ENDPOINTS after sorting — keeps only the
+        // highest-error-rate transactions. The sort guarantees SLA-relevant entries
+        // are always retained. subList() returns a view — no copy allocation.
+        List<Map<String, Object>> cappedErrors = errors.size() > MAX_ERROR_ENDPOINTS
+                ? errors.subList(0, MAX_ERROR_ENDPOINTS)
+                : errors;
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("globalStats", buildGlobalStats(results, percentile, pFraction, latency));
+        summary.put("anomalyTransactions", anomalies);
+        summary.put("errorEndpoints", cappedErrors);
+        summary.put("errorTypeSummary", errorTypeSummary);
+        summary.put("slowestEndpoints", slowest);
+        // allTransactionStats: compact per-label lookup table (label, avgMs, pnnMs,
+        // errorRatePct) enabling per-transaction RT SLA evaluation in the AI prompt.
+        // Sorted by pnnMs descending so the AI can scan from worst to best.
+        allStats.sort((a, b) -> Double.compare(asDouble(b.get("pnnMs")), asDouble(a.get("pnnMs"))));
+        summary.put("allTransactionStats", allStats);
+        // tpsSeries: compact TPS time-series enabling genuine plateau assessment.
+        // Only epochMs and tps are included — other bucket fields are redundant
+        // with globalStats and allTransactionStats. Null/empty = absent, and the
+        // prompt falls back to the DEFAULT rule (no plateau assertion).
+        summary.put("tpsSeries", buildTpsSeries(timeBuckets));
+        // rtSlaSummary: pre-computed RT SLA verdict — Java does the arithmetic
+        // so the AI never needs to compare observedMs against thresholdMs itself.
+        // This eliminates model-level numeric comparison errors entirely.
+        summary.put("rtSlaSummary", buildRtSlaSummary(allStats, request));
+        // errorSlaSummary: pre-computed error-rate SLA verdict — mirrors rtSlaSummary.
+        // Eliminates the same class of model arithmetic errors for error-rate SLA
+        // (digit misread, comparison inversion, wrong overage calculation).
+        // Uses allStats as source — covers all 100% of transactions, not just the
+        // capped errorEndpoints list — so no transaction is silently excluded.
+        summary.put("errorSlaSummary", buildErrorSlaSummary(allStats, userErrorSlaThreshold));
+        // classificationSummary: pre-computed bottleneck classification — Java executes
+        // the decision tree (Gate 1–4) so the AI never needs to compare errorRatePct,
+        // latency_ratio, or plateau values itself. Eliminates the SLA-leaks-into-classification
+        // error observed across all providers when SLA verdicts are BREACH.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> globalStats = (Map<String, Object>) summary.get("globalStats");
+        summary.put("classificationSummary", buildClassificationSummary(globalStats, timeBuckets));
+        // overallVerdictSummary: pre-computed final PASS/FAIL verdict combining SLA
+        // results with the classification-based no-SLA fallback. Java resolves the
+        // full verdict so the AI never needs to evaluate SLA + classification → verdict.
+        summary.put("overallVerdictSummary", buildOverallVerdictSummary(
+                summary.get("errorSlaSummary"),
+                summary.get("rtSlaSummary"),
+                summary.get("classificationSummary"),
+                globalStats));
+        return summary;
+    }
+
+    private Map<String, Object> buildGlobalStats(Map<String, SamplingStatCalculator> results,
+                                                 int percentile, double pFraction,
+                                                 LatencyContext latency) {
+        Map<String, Object> global = new LinkedHashMap<>();
+        SamplingStatCalculator total = results.get(JTLParser.TOTAL_LABEL);
+        if (total == null || total.getCount() == 0) return global;
+
+        final long totalCount = total.getCount();
+        final long failedCount = Math.min(Math.round(total.getErrorPercentage() * totalCount), totalCount);
+
+        global.put("totalRequests", totalCount);
+        global.put("totalPassed", totalCount - failedCount);
+        global.put("totalFailed", failedCount);
+        global.put("configuredPercentile", percentile);
+        global.put("avgResponseMs", round2(total.getMean()));
+        global.put("medianResponseMs", round2(total.getPercentPoint(MEDIAN).doubleValue()));
+        global.put("minResponseMs", total.getMin().longValue());
+        global.put("maxResponseMs", total.getMax().longValue());
+        global.put(percentile + "thPctMs", round2(total.getPercentPoint(pFraction).doubleValue()));
+        global.put("p99ResponseMs", round2(total.getPercentPoint(0.99).doubleValue()));
+        global.put("stdDevMs", round2(total.getStandardDeviation()));
+        global.put(KEY_ERROR_RATE_PCT, round2(total.getErrorPercentage() * 100.0));
+        global.put("throughputTPS", round2(total.getRate()));
+        global.put("receivedBandwidthKBps", round2(total.getKBPerSecond()));
+        // Latency decomposition fields — consumed by the Advanced Web Diagnostics
+        // section of the AI prompt to decide between direct and inferred mode.
+        global.put("avgLatencyMs", latency.avgLatencyMs());
+        global.put("avgConnectMs", latency.avgConnectMs());
+        global.put("latencyPresent", latency.latencyPresent());
+        return global;
+    }
+
+    /**
+     * Carries the three Latency/Connect fields derived during JTL parsing,
+     * and needed by the AI prompt's Advanced Web Diagnostics section.
+     *
+     * <p>Bundled as a record to keep {@link #build}'s parameter count bounded
+     * and to give the three values a named, cohesive type.</p>
+     *
+     * @param avgLatencyMs   average Latency (TTFB) in ms across all samples;
+     *                       0 when {@code latencyPresent} is false
+     * @param avgConnectMs   average Connect time in ms across all samples;
+     *                       0 when {@code latencyPresent} is false
+     * @param latencyPresent true iff at least one sample had a non-zero Latency value;
+     *                       false means the JTL has no usable Latency data and the
+     *                       prompt must use inferred mode for timing decomposition
+     */
+    public record LatencyContext(long avgLatencyMs, long avgConnectMs, boolean latencyPresent) {
+        /**
+         * Sentinel for absent latency data — used when no JTL has been parsed
+         * or all Latency values were zero.  Causes the prompt to enter inferred mode.
+         */
+        public static final LatencyContext ABSENT = new LatencyContext(0L, 0L, false);
     }
 }

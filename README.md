@@ -26,22 +26,22 @@ runtime overhead.
 
 ## Features
 
-| Feature                        | Description                                                                                       |
-|--------------------------------|---------------------------------------------------------------------------------------------------|
-| 📂 **JTL File Processing**     | Browse and load JTL files — the metrics table populates instantly                                 |
-| ⏱️ **Start / End Offset**      | Exclude ramp-up and ramp-down periods by entering a time window in seconds                        |
+| Feature                        | Description                                                                                      |
+|--------------------------------|--------------------------------------------------------------------------------------------------|
+| 📂 **JTL File Processing**     | Browse and load JTL files — the metrics table populates instantly                                |
+| ⏱️ **Start / End Offset**      | Exclude ramp-up and ramp-down periods by entering a time window in seconds                       |
 | 📈 **Configurable Percentile** | Set any percentile value: 50th, 90th, 95th, 99th, or custom                                      |
-| 🔍 **Transaction Filter**      | Filter by transaction name with Include/Exclude mode, plain text or regex                         |
-| 👁️ **Column Visibility**       | Show or hide any column via a dropdown multi-select control                                       |
-| ✅ **Pass / Fail Counts**       | Dedicated columns for transactions passed and transactions failed                                 |
-| 🕐 **Test Time Info**          | Start Date/Time, End Date/Time, and total Duration shown automatically                            |
-| 🔀 **Sortable Columns**        | Click any column header to sort ascending; click again for descending                             |
-| 🚨 **SLA Thresholds**          | Set Error % and Response Time thresholds — breaching cells are highlighted in red                 |
-| 💾 **CSV Export**              | Save all visible columns to a CSV file; SLA status columns (PASS/FAIL) included when configured   |
-| 🤖 **AI Performance Report**   | Generate a styled HTML report with deep-dive analysis, powered by any OpenAI-compatible provider  |
-| 📊 **Chart Interval**          | Configure the time-bucket interval for performance charts (default: auto, or set custom)          |
-| 🔄 **Provider Reload**         | Reload the AI provider list from `ai-reporter.properties` without restarting JMeter               |
-| 📐 **Delimiter Detection**     | Automatically reads the JTL delimiter from JMeter's properties files (`;`, `|`, `\t`, etc.)       |
+| 🔍 **Transaction Filter**      | Filter by transaction name with Include/Exclude mode, plain text or regex                        |
+| 👁️ **Column Visibility**      | Show or hide any column via a dropdown multi-select control                                      |
+| ✅ **Pass / Fail Counts**       | Dedicated columns for transactions passed and transactions failed                                |
+| 🕐 **Test Time Info**          | Start Date/Time, End Date/Time, and total Duration shown automatically                           |
+| 🔀 **Sortable Columns**        | Click any column header to sort ascending; click again for descending                            |
+| 🚨 **SLA Thresholds**          | Set Error % and Response Time thresholds — breaching cells are highlighted in red                |
+| 💾 **CSV Export**              | Save all visible columns to a CSV file; SLA status columns (PASS/FAIL) included when configured  |
+| 🤖 **AI Performance Report**   | Generate a styled HTML report with deep-dive analysis, powered by any OpenAI-compatible provider |
+| 📊 **Chart Interval**          | Configure the time-bucket interval for performance charts (default: auto, or set custom)         |
+| 🔄 **Provider Reload**         | Reload the AI provider list from `ai-reporter.properties` without restarting JMeter              |
+| 📐 **Delimiter Detection**     | Automatically reads the JTL delimiter from JMeter's properties files (`;`, `                     |`, `\t`, etc.)       |
 | 🚫 **No Live Metrics**         | Designed for post-test JTL analysis — no runtime overhead                                        |
 
 ---
@@ -140,10 +140,10 @@ Filter the results table by typing in the **Transaction Names** field.
 | **Plain text** (default) | Case-insensitive substring match | `login` matches `Login Flow`     |
 | **RegEx** (checkbox on)  | Java regex pattern match         | `Login\|Checkout` matches either |
 
-| Filter Mode              | Behaviour                                                                    |
-|--------------------------|------------------------------------------------------------------------------|
-| **Include** (default)    | Show only transactions matching the pattern                                  |
-| **Exclude**              | Hide transactions matching the pattern — all non-matching rows are shown     |
+| Filter Mode           | Behaviour                                                                |
+|-----------------------|--------------------------------------------------------------------------|
+| **Include** (default) | Show only transactions matching the pattern                              |
+| **Exclude**           | Hide transactions matching the pattern — all non-matching rows are shown |
 
 ### Chart Interval
 
@@ -183,30 +183,32 @@ Cerebras (free), OpenAI (paid), Claude (paid), Ollama (local / free) — or any 
 
 ### Pre-Computed Analysis
 
-The plugin pre-computes several analytical results in Java before sending data to the AI provider. This ensures deterministic, accurate outputs regardless of which AI model is used:
+The plugin pre-computes several analytical results in Java before sending data to the AI provider. This ensures
+deterministic, accurate outputs regardless of which AI model is used:
 
-| Pre-Computed Field         | Description                                                             |
-|----------------------------|-------------------------------------------------------------------------|
-| `classificationSummary`    | Bottleneck classification (THROUGHPUT-BOUND, LATENCY-BOUND, ERROR-BOUND, CAPACITY-WALL) with latency ratio, plateau ratio, and reasoning |
-| `overallVerdictSummary`    | Final PASS/FAIL verdict combining SLA results with classification fallback |
-| `errorSlaSummary`          | Per-transaction error rate SLA evaluation with worst transaction and breach details |
-| `rtSlaSummary`             | Per-transaction response time SLA evaluation with worst transaction and breach details |
+| Pre-Computed Field      | Description                                                                                                                              |
+|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `classificationSummary` | Bottleneck classification (THROUGHPUT-BOUND, LATENCY-BOUND, ERROR-BOUND, CAPACITY-WALL) with latency ratio, plateau ratio, and reasoning |
+| `overallVerdictSummary` | Final PASS/FAIL verdict combining SLA results with classification fallback                                                               |
+| `errorSlaSummary`       | Per-transaction error rate SLA evaluation with worst transaction and breach details                                                      |
+| `rtSlaSummary`          | Per-transaction response time SLA evaluation with worst transaction and breach details                                                   |
 
-The AI provider's role is to write analytical prose that justifies and explains the pre-computed results — it never computes the classification, verdict, or SLA outcomes itself.
+The AI provider's role is to write analytical prose that justifies and explains the pre-computed results — it never
+computes the classification, verdict, or SLA outcomes itself.
 
 ### Report Sections
 
-| Section                   | Description                                                    |
-|---------------------------|----------------------------------------------------------------|
-| Executive Summary         | Scenario overview, PASS/FAIL verdict, and binding constraint   |
+| Section                   | Description                                                        |
+|---------------------------|--------------------------------------------------------------------|
+| Executive Summary         | Scenario overview, PASS/FAIL verdict, and binding constraint       |
 | Bottleneck Analysis       | Pre-computed classification with throughput/latency/error evidence |
-| Error Analysis            | Failure mode characterisation and SLA threshold verdict        |
-| Advanced Web Diagnostics  | Response time breakdown by network, server, and transfer phase |
-| Root Cause Hypotheses     | Ranked list of probable causes with supporting metric evidence |
-| Recommendations           | Prioritised action table mapped to root cause findings         |
-| Verdict                   | Single PASS or FAIL outcome from pre-computed verdict          |
-| Transaction Metrics Table | Full per-transaction breakdown with SLA status                 |
-| Performance Charts        | Response time, error rate, throughput, and bandwidth over time |
+| Error Analysis            | Failure mode characterisation and SLA threshold verdict            |
+| Advanced Web Diagnostics  | Response time breakdown by network, server, and transfer phase     |
+| Root Cause Hypotheses     | Ranked list of probable causes with supporting metric evidence     |
+| Recommendations           | Prioritised action table mapped to root cause findings             |
+| Verdict                   | Single PASS or FAIL outcome from pre-computed verdict              |
+| Transaction Metrics Table | Full per-transaction breakdown with SLA status                     |
+| Performance Charts        | Response time, error rate, throughput, and bandwidth over time     |
 
 ### Truncation Handling
 
@@ -339,16 +341,16 @@ Help:
 
 ### Exit Codes
 
-| Code | Meaning                                          |
-|------|--------------------------------------------------|
-| `0`  | AI verdict **PASS**                              |
-| `1`  | AI verdict **FAIL**                              |
-| `2`  | AI verdict **UNDECISIVE**                        |
-| `3`  | Invalid arguments                                |
-| `4`  | JTL parse error                                  |
-| `5`  | AI provider error (key, ping, or API failure)    |
-| `6`  | Report write error                               |
-| `7`  | Unexpected error                                 |
+| Code | Meaning                                       |
+|------|-----------------------------------------------|
+| `0`  | AI verdict **PASS**                           |
+| `1`  | AI verdict **FAIL**                           |
+| `2`  | AI verdict **UNDECISIVE**                     |
+| `3`  | Invalid arguments                             |
+| `4`  | JTL parse error                               |
+| `5`  | AI provider error (key, ping, or API failure) |
+| `6`  | Report write error                            |
+| `7`  | Unexpected error                              |
 
 ### CI/CD Pipeline Example
 
@@ -394,6 +396,7 @@ mvn test
 
 **The AI report is missing sections or shows a truncation warning.**
 The AI provider reached its `max_tokens` limit. Increase the limit in `ai-reporter.properties`:
+
 ```properties
 ai.reporter.<provider>.max.tokens=16000
 ```

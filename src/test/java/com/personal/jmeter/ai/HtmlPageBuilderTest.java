@@ -131,10 +131,10 @@ class HtmlPageBuilderTest {
         void noTrailingPipeTable() {
             String input = "| Priority | Hypothesis | Action\n|---|---|---\n| High | DB slow | Add index";
             String result = HtmlPageBuilder.convertPipeTablesToHtml(input);
-            assertTrue(result.contains("<table>"),            "Should detect table without trailing pipe");
-            assertTrue(result.contains("<th>Priority</th>"),  "Header cell Priority");
-            assertTrue(result.contains("<th>Action</th>"),    "Header cell Action");
-            assertTrue(result.contains("<td>High</td>"),      "Data cell High");
+            assertTrue(result.contains("<table>"), "Should detect table without trailing pipe");
+            assertTrue(result.contains("<th>Priority</th>"), "Header cell Priority");
+            assertTrue(result.contains("<th>Action</th>"), "Header cell Action");
+            assertTrue(result.contains("<td>High</td>"), "Data cell High");
             assertTrue(result.contains("<td>Add index</td>"), "Data cell Add index");
         }
 
@@ -143,9 +143,9 @@ class HtmlPageBuilderTest {
         void noLeadingPipeTable() {
             String input = "Priority | Hypothesis | Action |\n---|---|---|\n High | DB slow | Add index |";
             String result = HtmlPageBuilder.convertPipeTablesToHtml(input);
-            assertTrue(result.contains("<table>"),            "Should detect table without leading pipe");
-            assertTrue(result.contains("<th>Priority</th>"),  "Header cell Priority");
-            assertTrue(result.contains("<th>Action</th>"),    "Header cell Action");
+            assertTrue(result.contains("<table>"), "Should detect table without leading pipe");
+            assertTrue(result.contains("<th>Priority</th>"), "Header cell Priority");
+            assertTrue(result.contains("<th>Action</th>"), "Header cell Action");
         }
 
         @Test
@@ -153,9 +153,9 @@ class HtmlPageBuilderTest {
         void noEdgePipeTable() {
             String input = "Priority | Hypothesis | Action\n---|---|---\n High | DB slow | Add index";
             String result = HtmlPageBuilder.convertPipeTablesToHtml(input);
-            assertTrue(result.contains("<table>"),            "Should detect interior-pipe-only table");
-            assertTrue(result.contains("<th>Priority</th>"),  "Header cell Priority");
-            assertTrue(result.contains("<td>High</td>"),      "Data cell High");
+            assertTrue(result.contains("<table>"), "Should detect interior-pipe-only table");
+            assertTrue(result.contains("<th>Priority</th>"), "Header cell Priority");
+            assertTrue(result.contains("<td>High</td>"), "Data cell High");
         }
 
         @Test
@@ -163,9 +163,9 @@ class HtmlPageBuilderTest {
         void leadingAndTrailingPipeTable() {
             String input = "| Priority | Action |\n|---|---|\n| High | Fix it |";
             String result = HtmlPageBuilder.convertPipeTablesToHtml(input);
-            assertTrue(result.contains("<table>"),            "Should detect full-pipe table");
-            assertTrue(result.contains("<th>Priority</th>"),  "Header cell Priority");
-            assertTrue(result.contains("<td>Fix it</td>"),    "Data cell Fix it");
+            assertTrue(result.contains("<table>"), "Should detect full-pipe table");
+            assertTrue(result.contains("<th>Priority</th>"), "Header cell Priority");
+            assertTrue(result.contains("<td>Fix it</td>"), "Data cell Fix it");
         }
     }
 
@@ -239,8 +239,8 @@ class HtmlPageBuilderTest {
             String input = "Some text\n<script>alert('xss')</script>\nMore text";
             String result = HtmlPageBuilder.stripRawHtml(input);
             assertFalse(result.contains("<script>"), "script tag line must be stripped");
-            assertTrue(result.contains("Some text"),  "preceding text must be preserved");
-            assertTrue(result.contains("More text"),  "following text must be preserved");
+            assertTrue(result.contains("Some text"), "preceding text must be preserved");
+            assertTrue(result.contains("More text"), "following text must be preserved");
         }
 
         @Test
@@ -269,7 +269,7 @@ class HtmlPageBuilderTest {
             String input = "| Header |\n|---|\n| Cell |";
             String result = HtmlPageBuilder.stripRawHtml(input);
             assertTrue(result.contains("| Header |"), "pipe table header must be preserved");
-            assertTrue(result.contains("| Cell |"),   "pipe table cell must be preserved");
+            assertTrue(result.contains("| Cell |"), "pipe table cell must be preserved");
         }
 
         @Test
@@ -340,17 +340,17 @@ class HtmlPageBuilderTest {
         void twoBucketsRendersCharts() {
             long now = System.currentTimeMillis();
             List<JTLParser.TimeBucket> buckets = List.of(
-                    new JTLParser.TimeBucket(now,          250.0, 0.0, 10.0, 50.0),
+                    new JTLParser.TimeBucket(now, 250.0, 0.0, 10.0, 50.0),
                     new JTLParser.TimeBucket(now + 30_000, 300.0, 1.0, 12.0, 60.0));
             String result = HtmlPageBuilder.buildChartsSection(buckets);
             assertTrue(result.contains("<canvas"),
                     "Two buckets must render Chart.js canvas elements");
             assertFalse(result.contains("charts-unavailable"),
                     "Full chart must not use the placeholder CSS class");
-            assertTrue(result.contains("chartAvgRt"),  "Avg RT chart must be present");
+            assertTrue(result.contains("chartAvgRt"), "Avg RT chart must be present");
             assertTrue(result.contains("chartErrPct"), "Error rate chart must be present");
-            assertTrue(result.contains("chartTps"),    "Throughput chart must be present");
-            assertTrue(result.contains("chartKb"),     "Bandwidth chart must be present");
+            assertTrue(result.contains("chartTps"), "Throughput chart must be present");
+            assertTrue(result.contains("chartKb"), "Bandwidth chart must be present");
         }
     }
 }

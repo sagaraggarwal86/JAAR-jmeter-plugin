@@ -20,7 +20,9 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("AiReportService — extractAndValidateContent")
 class AiReportServiceTest {
 
-    /** Mirror of {@link AiReportService#SECTION_SKELETON} for assertion use. */
+    /**
+     * Mirror of {@link AiReportService#SECTION_SKELETON} for assertion use.
+     */
     private static final String SKELETON = AiReportService.SECTION_SKELETON;
 
     /**
@@ -37,13 +39,92 @@ class AiReportServiceTest {
                     + "|---|---|---|---|---|\n| P2 | #1 | Optimise queries | Reduce latency | Medium |\n\n"
                     + "## Verdict\n\nPASS — all SLAs met.\nVERDICT:PASS";
 
-    /** JSON-escaped version of {@link #FULL_CONTENT} for embedding in JSON strings. */
+    /**
+     * JSON-escaped version of {@link #FULL_CONTENT} for embedding in JSON strings.
+     */
     private static final String FULL_CONTENT_ESCAPED = FULL_CONTENT
             .replace("\\", "\\\\")
             .replace("\"", "\\\"")
             .replace("\n", "\\n");
 
     private AiReportService service;
+
+    /**
+     * Builds a minimal OpenAI-compatible choices JSON string.
+     *
+     * @param content      the message content
+     * @param finishReason the finish_reason value
+     * @return JSON string
+     */
+    private static String buildResponse(String content, String finishReason) {
+        // Escape content for embedding in JSON
+        String escaped = content
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n");
+        return "{"
+                + "\"choices\":[{"
+                + "\"message\":{\"role\":\"assistant\",\"content\":\"" + escaped + "\"},"
+                + "\"finish_reason\":\"" + finishReason + "\","
+                + "\"index\":0"
+                + "}]"
+                + "}";
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Happy path
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Builds a minimal OpenAI-compatible JSON response that includes a {@code usage} block.
+     * Used to test the usage-based truncation fallback.
+     *
+     * @param content          the message content
+     * @param finishReason     the finish_reason value
+     * @param completionTokens completion_tokens to report in the usage block
+     * @param configMaxTokens  max_tokens the service config was initialised with
+     * @return JSON string
+     */
+    private static String buildResponseWithUsage(String content, String finishReason,
+                                                 int completionTokens, int configMaxTokens) {
+        String escaped = content
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n");
+        return "{"
+                + "\"choices\":[{"
+                + "\"message\":{\"role\":\"assistant\",\"content\":\"" + escaped + "\"},"
+                + "\"finish_reason\":\"" + finishReason + "\","
+                + "\"index\":0"
+                + "}],"
+                + "\"usage\":{"
+                + "\"prompt_tokens\":500,"
+                + "\"completion_tokens\":" + completionTokens + ","
+                + "\"total_tokens\":" + (500 + completionTokens)
+                + "}"
+                + "}";
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Missing sections detection
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Returns the number of non-overlapping occurrences of {@code sub} in {@code str}.
+     */
+    private static int countOccurrences(String str, String sub) {
+        int count = 0;
+        int idx = 0;
+        while ((idx = str.indexOf(sub, idx)) != -1) {
+            count++;
+            idx += sub.length();
+        }
+        return count;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Truncation detection
+    // ─────────────────────────────────────────────────────────────
 
     @BeforeEach
     void setUp() {
@@ -58,7 +139,7 @@ class AiReportServiceTest {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Happy path
+    // Error paths
     // ─────────────────────────────────────────────────────────────
 
     @Nested
@@ -115,7 +196,7 @@ class AiReportServiceTest {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Missing sections detection
+    // Helper
     // ─────────────────────────────────────────────────────────────
 
     @Nested
@@ -221,10 +302,6 @@ class AiReportServiceTest {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Truncation detection
-    // ─────────────────────────────────────────────────────────────
-
     @Nested
     @DisplayName("Truncation detection (finish_reason=length)")
     class TruncationDetection {
@@ -318,10 +395,6 @@ class AiReportServiceTest {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Error paths
-    // ─────────────────────────────────────────────────────────────
-
     @Nested
     @DisplayName("Error paths")
     class ErrorPaths {
@@ -360,72 +433,5 @@ class AiReportServiceTest {
                     () -> service.extractAndValidateContent(json),
                     "Missing choices field must throw AiServiceException");
         }
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Helper
-    // ─────────────────────────────────────────────────────────────
-
-    /**
-     * Builds a minimal OpenAI-compatible choices JSON string.
-     *
-     * @param content      the message content
-     * @param finishReason the finish_reason value
-     * @return JSON string
-     */
-    private static String buildResponse(String content, String finishReason) {
-        // Escape content for embedding in JSON
-        String escaped = content
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n");
-        return "{"
-                + "\"choices\":[{"
-                + "\"message\":{\"role\":\"assistant\",\"content\":\"" + escaped + "\"},"
-                + "\"finish_reason\":\"" + finishReason + "\","
-                + "\"index\":0"
-                + "}]"
-                + "}";
-    }
-
-    /**
-     * Builds a minimal OpenAI-compatible JSON response that includes a {@code usage} block.
-     * Used to test the usage-based truncation fallback.
-     *
-     * @param content           the message content
-     * @param finishReason      the finish_reason value
-     * @param completionTokens  completion_tokens to report in the usage block
-     * @param configMaxTokens   max_tokens the service config was initialised with
-     * @return JSON string
-     */
-    private static String buildResponseWithUsage(String content, String finishReason,
-                                                 int completionTokens, int configMaxTokens) {
-        String escaped = content
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n");
-        return "{"
-                + "\"choices\":[{"
-                + "\"message\":{\"role\":\"assistant\",\"content\":\"" + escaped + "\"},"
-                + "\"finish_reason\":\"" + finishReason + "\","
-                + "\"index\":0"
-                + "}],"
-                + "\"usage\":{"
-                + "\"prompt_tokens\":500,"
-                + "\"completion_tokens\":" + completionTokens + ","
-                + "\"total_tokens\":" + (500 + completionTokens)
-                + "}"
-                + "}";
-    }
-
-    /** Returns the number of non-overlapping occurrences of {@code sub} in {@code str}. */
-    private static int countOccurrences(String str, String sub) {
-        int count = 0;
-        int idx   = 0;
-        while ((idx = str.indexOf(sub, idx)) != -1) {
-            count++;
-            idx += sub.length();
-        }
-        return count;
     }
 }

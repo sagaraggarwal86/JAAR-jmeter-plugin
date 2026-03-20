@@ -139,16 +139,16 @@ class PromptRequestTest {
             PromptRequest r = new PromptRequest(
                     "200", "Load Test", "Soak run", "10:00", "11:00", "60m", "Users",
                     95, "5%", "2000ms", "P95 (ms)");
-            assertEquals("200",      r.users());
+            assertEquals("200", r.users());
             assertEquals("Load Test", r.scenarioName());
             assertEquals("Soak run", r.scenarioDesc());
-            assertEquals("10:00",    r.startTime());
-            assertEquals("11:00",    r.endTime());
-            assertEquals("60m",      r.duration());
-            assertEquals("Users",    r.threadGroupName());
-            assertEquals(95,         r.configuredPercentile());
-            assertEquals("5%",       r.errorSlaThresholdPct());
-            assertEquals("2000ms",   r.rtSlaThresholdMs());
+            assertEquals("10:00", r.startTime());
+            assertEquals("11:00", r.endTime());
+            assertEquals("60m", r.duration());
+            assertEquals("Users", r.threadGroupName());
+            assertEquals(95, r.configuredPercentile());
+            assertEquals("5%", r.errorSlaThresholdPct());
+            assertEquals("2000ms", r.rtSlaThresholdMs());
             assertEquals("P95 (ms)", r.rtSlaMetric());
         }
     }

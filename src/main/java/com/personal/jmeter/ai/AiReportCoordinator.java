@@ -78,105 +78,6 @@ public class AiReportCoordinator {
     }
 
     /**
-     * Submits the AI report workflow to the background executor.
-     * Progress is reported via {@code progressLabel}; {@code triggerBtn} is
-     * re-enabled and {@code progressDialog} is disposed when the task completes.
-     *
-     * <p>{@code prompt} must be built by the caller on the Swing EDT before invoking
-     * this method. The resulting {@link PromptContent} is an immutable record
-     * (two {@code final} Strings) and is safe to hand off to the background executor.</p>
-     *
-     * @param prompt         pre-built analysis prompt; must not be null
-     * @param context        immutable snapshot of all data needed by the workflow
-     * @param progressDialog modal-less progress dialog shown while the task runs
-     * @param progressLabel  label inside the dialog updated with status messages
-     * @param triggerBtn     the button that started the workflow (re-enabled on completion)
-     */
-    public void start(PromptContent prompt,
-                      ReportContext context,
-                      JDialog progressDialog,
-                      JLabel progressLabel,
-                      JButton triggerBtn) {
-        Objects.requireNonNull(prompt,         "prompt must not be null");
-        Objects.requireNonNull(context,        "context must not be null");
-        Objects.requireNonNull(progressDialog, "progressDialog must not be null");
-        Objects.requireNonNull(progressLabel,  "progressLabel must not be null");
-        Objects.requireNonNull(triggerBtn,     "triggerBtn must not be null");
-
-        executor.submit(() -> executeReport(prompt, context, progressDialog, progressLabel, triggerBtn));
-    }
-
-    private void executeReport(PromptContent prompt,
-                               ReportContext ctx,
-                               JDialog progressDialog,
-                               JLabel progressLabel,
-                               JButton triggerBtn) {
-        try {
-            setProgress(progressLabel, "Calling " + ctx.providerDisplayName + " (this may take ~30 seconds)...");
-            String markdown = aiService.generateReport(prompt);
-
-            // Normalise section headings — inject any structurally missing headings
-            // (e.g. Cerebras consistently omits ## Executive Summary).
-            // Must run before stripVerdictLine so heading injection does not
-            // interfere with token stripping.
-            markdown = MarkdownSectionNormaliser.normalise(markdown);
-
-            // Strip the machine verdict token (e.g. "VERDICT:FAIL") before rendering.
-            // This token is a CLI exit-code signal and must never appear as visible
-            // text in the HTML report. In CLI mode CliReportPipeline does this via
-            // MarkdownUtils; here we mirror the same step for the UI path.
-            String verdict       = MarkdownUtils.extractVerdict(markdown);
-            String verdictSource = MarkdownUtils.verdictSource(markdown);
-            log.info("executeReport: verdict={} source={} provider={}",
-                    verdict, verdictSource, ctx.providerConfig.providerKey);
-            String strippedMarkdown = MarkdownUtils.stripVerdictLine(markdown);
-
-            setProgress(progressLabel, "Rendering HTML report...");
-            String htmlPath = renderReport(ctx, strippedMarkdown);
-
-            SwingUtilities.invokeLater(() -> onSuccess(htmlPath, progressDialog, triggerBtn));
-
-        } catch (IOException ex) {
-            // Evict the ping cache when the provider rejects the request with an auth error
-            // (HTTP 401 = key rejected, HTTP 403 = access denied / quota exceeded).
-            // This forces a fresh live ping on the next attempt instead of hitting the stale
-            // cached-success entry — which would otherwise bypass the ping indefinitely.
-            if (ex instanceof AiServiceException
-                    && (ex.getMessage().contains("HTTP 401") || ex.getMessage().contains("HTTP 403"))) {
-                log.warn("executeReport: auth failure from provider — evicting ping cache. provider={}",
-                        ctx.providerConfig.providerKey);
-                AiProviderRegistry.evictPingCache(ctx.providerConfig);
-            }
-            log.error("executeReport: AI report generation failed. reason={}", ex.getMessage(), ex);
-            SwingUtilities.invokeLater(() -> onFailure(ex, progressDialog, triggerBtn));
-        } catch (RuntimeException ex) {
-            log.error("executeReport: unexpected error during report generation. reason={}", ex.getMessage(), ex);
-            SwingUtilities.invokeLater(() -> onFailure(
-                    new IOException("Unexpected error during report generation. "
-                            + "Check the log for details. reason=" + ex.getMessage(), ex),
-                    progressDialog, triggerBtn));
-        }
-    }
-
-    private String renderReport(ReportContext ctx, String markdown) throws IOException {
-        String suggestedName = deriveSuggestedFileName(ctx.providerDisplayName);
-        File startDir = Path.of(ctx.jtlPath).toAbsolutePath().getParent() != null
-                ? Path.of(ctx.jtlPath).toAbsolutePath().getParent().toFile()
-                : new File(System.getProperty("user.dir"));
-
-        String outPath = promptForSavePath(suggestedName, startDir);
-        if (outPath == null) {
-            throw new IOException("Report save cancelled by user.");
-        }
-
-        return renderer.renderToFile(markdown, outPath, ctx.config, ctx.tableRows, ctx.timeBuckets);
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Save dialog and path helpers
-    // ─────────────────────────────────────────────────────────────
-
-    /**
      * Shows a save-file dialog on the EDT so the user chooses where to save the report.
      * Blocks the calling background thread until the user responds.
      *
@@ -223,9 +124,9 @@ public class AiReportCoordinator {
      * @return suggested filename
      */
     private static String deriveSuggestedFileName(String providerDisplayName) {
-        String timestamp   = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         // Strip parenthetical tier suffix — "Groq (Free)" → "Groq", "OpenAI (Paid)" → "OpenAI"
-        String baseName    = (providerDisplayName != null)
+        String baseName = (providerDisplayName != null)
                 ? providerDisplayName.replaceAll("\\s*\\(.*\\)\\s*$", "").trim()
                 : "";
         String providerPart = sanitizeSegment(baseName);
@@ -239,6 +140,105 @@ public class AiReportCoordinator {
                 .replaceAll("[\\\\/:*?\"<>|\\s]+", "_")
                 .replaceAll("_+", "_")
                 .replaceAll("^_|_$", "");
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Save dialog and path helpers
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Submits the AI report workflow to the background executor.
+     * Progress is reported via {@code progressLabel}; {@code triggerBtn} is
+     * re-enabled and {@code progressDialog} is disposed when the task completes.
+     *
+     * <p>{@code prompt} must be built by the caller on the Swing EDT before invoking
+     * this method. The resulting {@link PromptContent} is an immutable record
+     * (two {@code final} Strings) and is safe to hand off to the background executor.</p>
+     *
+     * @param prompt         pre-built analysis prompt; must not be null
+     * @param context        immutable snapshot of all data needed by the workflow
+     * @param progressDialog modal-less progress dialog shown while the task runs
+     * @param progressLabel  label inside the dialog updated with status messages
+     * @param triggerBtn     the button that started the workflow (re-enabled on completion)
+     */
+    public void start(PromptContent prompt,
+                      ReportContext context,
+                      JDialog progressDialog,
+                      JLabel progressLabel,
+                      JButton triggerBtn) {
+        Objects.requireNonNull(prompt, "prompt must not be null");
+        Objects.requireNonNull(context, "context must not be null");
+        Objects.requireNonNull(progressDialog, "progressDialog must not be null");
+        Objects.requireNonNull(progressLabel, "progressLabel must not be null");
+        Objects.requireNonNull(triggerBtn, "triggerBtn must not be null");
+
+        executor.submit(() -> executeReport(prompt, context, progressDialog, progressLabel, triggerBtn));
+    }
+
+    private void executeReport(PromptContent prompt,
+                               ReportContext ctx,
+                               JDialog progressDialog,
+                               JLabel progressLabel,
+                               JButton triggerBtn) {
+        try {
+            setProgress(progressLabel, "Calling " + ctx.providerDisplayName + " (this may take ~30 seconds)...");
+            String markdown = aiService.generateReport(prompt);
+
+            // Normalise section headings — inject any structurally missing headings
+            // (e.g. Cerebras consistently omits ## Executive Summary).
+            // Must run before stripVerdictLine so heading injection does not
+            // interfere with token stripping.
+            markdown = MarkdownSectionNormaliser.normalise(markdown);
+
+            // Strip the machine verdict token (e.g. "VERDICT:FAIL") before rendering.
+            // This token is a CLI exit-code signal and must never appear as visible
+            // text in the HTML report. In CLI mode CliReportPipeline does this via
+            // MarkdownUtils; here we mirror the same step for the UI path.
+            String verdict = MarkdownUtils.extractVerdict(markdown);
+            String verdictSource = MarkdownUtils.verdictSource(markdown);
+            log.info("executeReport: verdict={} source={} provider={}",
+                    verdict, verdictSource, ctx.providerConfig.providerKey);
+            String strippedMarkdown = MarkdownUtils.stripVerdictLine(markdown);
+
+            setProgress(progressLabel, "Rendering HTML report...");
+            String htmlPath = renderReport(ctx, strippedMarkdown);
+
+            SwingUtilities.invokeLater(() -> onSuccess(htmlPath, progressDialog, triggerBtn));
+
+        } catch (IOException ex) {
+            // Evict the ping cache when the provider rejects the request with an auth error
+            // (HTTP 401 = key rejected, HTTP 403 = access denied / quota exceeded).
+            // This forces a fresh live ping on the next attempt instead of hitting the stale
+            // cached-success entry — which would otherwise bypass the ping indefinitely.
+            if (ex instanceof AiServiceException
+                    && (ex.getMessage().contains("HTTP 401") || ex.getMessage().contains("HTTP 403"))) {
+                log.warn("executeReport: auth failure from provider — evicting ping cache. provider={}",
+                        ctx.providerConfig.providerKey);
+                AiProviderRegistry.evictPingCache(ctx.providerConfig);
+            }
+            log.error("executeReport: AI report generation failed. reason={}", ex.getMessage(), ex);
+            SwingUtilities.invokeLater(() -> onFailure(ex, progressDialog, triggerBtn));
+        } catch (RuntimeException ex) {
+            log.error("executeReport: unexpected error during report generation. reason={}", ex.getMessage(), ex);
+            SwingUtilities.invokeLater(() -> onFailure(
+                    new IOException("Unexpected error during report generation. "
+                            + "Check the log for details. reason=" + ex.getMessage(), ex),
+                    progressDialog, triggerBtn));
+        }
+    }
+
+    private String renderReport(ReportContext ctx, String markdown) throws IOException {
+        String suggestedName = deriveSuggestedFileName(ctx.providerDisplayName);
+        File startDir = Path.of(ctx.jtlPath).toAbsolutePath().getParent() != null
+                ? Path.of(ctx.jtlPath).toAbsolutePath().getParent().toFile()
+                : new File(System.getProperty("user.dir"));
+
+        String outPath = promptForSavePath(suggestedName, startDir);
+        if (outPath == null) {
+            throw new IOException("Report save cancelled by user.");
+        }
+
+        return renderer.renderToFile(markdown, outPath, ctx.config, ctx.tableRows, ctx.timeBuckets);
     }
 
     private void onSuccess(String htmlPath, JDialog progressDialog, JButton triggerBtn) {
@@ -265,15 +265,25 @@ public class AiReportCoordinator {
      * all fields are final and all collections are unmodifiable copies.
      */
     public static final class ReportContext {
-        /** Visible table rows as strings (TOTAL excluded). */
+        /**
+         * Visible table rows as strings (TOTAL excluded).
+         */
         public final List<String[]> tableRows;
-        /** Ordered list of time buckets for the charts section. */
+        /**
+         * Ordered list of time buckets for the charts section.
+         */
         public final List<JTLParser.TimeBucket> timeBuckets;
-        /** Render metadata for the HTML template. */
+        /**
+         * Render metadata for the HTML template.
+         */
         public final HtmlReportRenderer.RenderConfig config;
-        /** Absolute path to the source JTL file. */
+        /**
+         * Absolute path to the source JTL file.
+         */
         public final String jtlPath;
-        /** Human-readable name of the selected AI provider (e.g. "Groq (Free)"). */
+        /**
+         * Human-readable name of the selected AI provider (e.g. "Groq (Free)").
+         */
         public final String providerDisplayName;
         /**
          * The AI provider configuration used for this report.
@@ -298,11 +308,11 @@ public class AiReportCoordinator {
                              String jtlPath,
                              String providerDisplayName,
                              AiProviderConfig providerConfig) {
-            this.tableRows           = Objects.requireNonNull(tableRows,       "tableRows must not be null");
-            this.timeBuckets         = Objects.requireNonNull(timeBuckets,     "timeBuckets must not be null");
-            this.config              = Objects.requireNonNull(config,          "config must not be null");
-            this.jtlPath             = Objects.requireNonNull(jtlPath,         "jtlPath must not be null");
-            this.providerConfig      = Objects.requireNonNull(providerConfig,  "providerConfig must not be null");
+            this.tableRows = Objects.requireNonNull(tableRows, "tableRows must not be null");
+            this.timeBuckets = Objects.requireNonNull(timeBuckets, "timeBuckets must not be null");
+            this.config = Objects.requireNonNull(config, "config must not be null");
+            this.jtlPath = Objects.requireNonNull(jtlPath, "jtlPath must not be null");
+            this.providerConfig = Objects.requireNonNull(providerConfig, "providerConfig must not be null");
             this.providerDisplayName = providerDisplayName != null ? providerDisplayName : "AI Provider";
         }
     }

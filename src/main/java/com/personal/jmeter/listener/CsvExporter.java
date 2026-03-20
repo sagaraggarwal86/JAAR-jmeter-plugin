@@ -58,6 +58,48 @@ final class CsvExporter {
     }
 
     /**
+     * Strips the trailing {@code %} from an Error Rate cell before parsing.
+     */
+    private static double parseErrorRate(Object val) {
+        if (val == null) return 0;
+        try {
+            return Double.parseDouble(val.toString().replace("%", "").trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Parses a plain numeric cell value.
+     */
+    private static double parseDouble(Object val) {
+        if (val == null) return 0;
+        try {
+            return Double.parseDouble(val.toString().trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // SLA evaluation helpers
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * RFC 4180 CSV escaping applied to every cell.
+     *
+     * @param value cell value (may be null)
+     * @return escaped string safe for embedding in CSV
+     */
+    static String escapeCSV(String value) {
+        if (value == null) return "";
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
+
+    /**
      * Opens a save dialog and writes the currently visible table data to a CSV file.
      * Shows a success or error message dialog on completion.
      */
@@ -99,8 +141,8 @@ final class CsvExporter {
         List<Integer> visibleCols = getVisibleColumnModelIndices();
         SlaConfig sla = slaConfigSupplier.get();
         boolean hasErrorSla = sla.isErrorPctEnabled();
-        boolean hasRtSla    = sla.isRtEnabled();
-        boolean hasSla      = hasErrorSla || hasRtSla;
+        boolean hasRtSla = sla.isRtEnabled();
+        boolean hasSla = hasErrorSla || hasRtSla;
 
         try (BufferedWriter writer = new BufferedWriter(
                 new OutputStreamWriter(
@@ -142,7 +184,7 @@ final class CsvExporter {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // SLA evaluation helpers
+    // Parse helpers (mirrors SlaRowRenderer)
     // ─────────────────────────────────────────────────────────────
 
     /**
@@ -181,49 +223,11 @@ final class CsvExporter {
         return JTLParser.TOTAL_LABEL.equals(nameCell != null ? nameCell.toString() : "");
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Parse helpers (mirrors SlaRowRenderer)
-    // ─────────────────────────────────────────────────────────────
-
-    /** Strips the trailing {@code %} from an Error Rate cell before parsing. */
-    private static double parseErrorRate(Object val) {
-        if (val == null) return 0;
-        try {
-            return Double.parseDouble(val.toString().replace("%", "").trim());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
-    /** Parses a plain numeric cell value. */
-    private static double parseDouble(Object val) {
-        if (val == null) return 0;
-        try {
-            return Double.parseDouble(val.toString().trim());
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
     private List<Integer> getVisibleColumnModelIndices() {
         java.util.List<Integer> indices = new java.util.ArrayList<>();
         for (int i = 0; i < columnMenuItems.length; i++) {
             if (columnMenuItems[i].isSelected()) indices.add(i);
         }
         return indices;
-    }
-
-    /**
-     * RFC 4180 CSV escaping applied to every cell.
-     *
-     * @param value cell value (may be null)
-     * @return escaped string safe for embedding in CSV
-     */
-    static String escapeCSV(String value) {
-        if (value == null) return "";
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
-        }
-        return value;
     }
 }

@@ -45,9 +45,9 @@ final class HtmlPageBuilder {
                             String chartsBlock, HtmlReportRenderer.RenderConfig config) {
         String runDateTime = buildRunDateTime(config.startTime, config.endTime);
         StringBuilder meta = new StringBuilder("<table class=\"meta-table\">\n");
-        appendMetaRow(meta, "Scenario Name",        config.scenarioName);
+        appendMetaRow(meta, "Scenario Name", config.scenarioName);
         appendMetaRow(meta, "Scenario Description", config.scenarioDesc);
-        appendMetaRow(meta, "Virtual Users",         config.users);
+        appendMetaRow(meta, "Virtual Users", config.users);
         if (!runDateTime.isEmpty()) appendMetaRow(meta, "Run Date/Time", runDateTime);
         appendMetaRow(meta, "Duration", config.duration);
         meta.append("</table>\n");
@@ -111,7 +111,7 @@ final class HtmlPageBuilder {
         List<String> jAvg = new ArrayList<>();
         List<String> jErr = new ArrayList<>();
         List<String> jTps = new ArrayList<>();
-        List<String> jKb  = new ArrayList<>();
+        List<String> jKb = new ArrayList<>();
 
         for (JTLParser.TimeBucket b : timeBuckets) {
             String label = LocalDateTime.ofInstant(
@@ -120,14 +120,14 @@ final class HtmlPageBuilder {
             jAvg.add(String.format(Locale.US, "%.2f", b.avgResponseMs));
             jErr.add(String.format(Locale.US, "%.2f", b.errorPct));
             jTps.add(String.format(Locale.US, "%.2f", b.tps));
-            jKb.add(String.format(Locale.US,  "%.2f", b.kbps));
+            jKb.add(String.format(Locale.US, "%.2f", b.kbps));
         }
 
         // Append a phantom end-point at (last bucket start + interval) so Chart.js
         // extends the x-axis to the true test end time. The null data values ensure
         // nothing is plotted at this position — it is a label anchor only.
         long intervalMs = timeBuckets.get(1).epochMs - timeBuckets.get(0).epochMs;
-        long phantomMs  = timeBuckets.get(timeBuckets.size() - 1).epochMs + intervalMs;
+        long phantomMs = timeBuckets.get(timeBuckets.size() - 1).epochMs + intervalMs;
         String phantomLabel = LocalDateTime.ofInstant(
                 Instant.ofEpochMilli(phantomMs), ZoneId.systemDefault()).format(CHART_TIME_FMT);
         jLabels.add("\"" + phantomLabel + "\"");
@@ -140,7 +140,7 @@ final class HtmlPageBuilder {
         String avgArr = "[" + String.join(",", jAvg) + "]";
         String errArr = "[" + String.join(",", jErr) + "]";
         String tpsArr = "[" + String.join(",", jTps) + "]";
-        String kbArr  = "[" + String.join(",", jKb)  + "]";
+        String kbArr = "[" + String.join(",", jKb) + "]";
 
         long intervalSeconds = (timeBuckets.get(1).epochMs - timeBuckets.get(0).epochMs) / 1_000L;
 
@@ -150,10 +150,10 @@ final class HtmlPageBuilder {
                 .append("  <p class=\"charts-note\">Each point represents a ")
                 .append(intervalSeconds)
                 .append("-second interval.</p>\n")
-                .append(chartBox("chartAvgRt",  "Average Response Time Over Time (ms)"))
+                .append(chartBox("chartAvgRt", "Average Response Time Over Time (ms)"))
                 .append(chartBox("chartErrPct", "Error Rate Over Time (%)"))
-                .append(chartBox("chartTps",    "Throughput Over Time (req/s)"))
-                .append(chartBox("chartKb",     "Received Bandwidth Over Time (KB/s)"))
+                .append(chartBox("chartTps", "Throughput Over Time (req/s)"))
+                .append(chartBox("chartKb", "Received Bandwidth Over Time (KB/s)"))
                 .append("</div>\n")
                 .append("<script>\n(function() {\n")
                 .append("  var labels = ").append(labels).append(";\n")
@@ -161,7 +161,7 @@ final class HtmlPageBuilder {
                 .append("  timeChart('chartAvgRt',  ").append(avgArr).append(", 'Avg Response Time', 'ms',    'rgba(49,130,206,1)');\n")
                 .append("  timeChart('chartErrPct', ").append(errArr).append(", 'Error Rate',        '%',     'rgba(229,62,62,1)');\n")
                 .append("  timeChart('chartTps',    ").append(tpsArr).append(", 'Throughput',        'req/s', 'rgba(72,187,120,1)');\n")
-                .append("  timeChart('chartKb',     ").append(kbArr) .append(", 'Bandwidth',         'KB/s',  'rgba(159,122,234,1)');\n")
+                .append("  timeChart('chartKb',     ").append(kbArr).append(", 'Bandwidth',         'KB/s',  'rgba(159,122,234,1)');\n")
                 .append("})();\n</script>\n")
                 .toString();
     }
@@ -205,7 +205,7 @@ final class HtmlPageBuilder {
      * @return sanitised HTML string
      */
     static String markdownToHtml(String markdown) {
-        String sanitised    = stripRawHtml(markdown);
+        String sanitised = stripRawHtml(markdown);
         String preprocessed = convertPipeTablesToHtml(sanitised);
         Parser parser = Parser.builder().build();
         HtmlRenderer renderer = HtmlRenderer.builder().escapeHtml(false).build();
@@ -329,7 +329,7 @@ final class HtmlPageBuilder {
     private static String[] splitPipeRow(String line) {
         String t = line.trim();
         if (t.startsWith("|")) t = t.substring(1);
-        if (t.endsWith("|"))   t = t.substring(0, t.length() - 1);
+        if (t.endsWith("|")) t = t.substring(0, t.length() - 1);
         return t.split("\\|", -1);
     }
 
@@ -339,7 +339,7 @@ final class HtmlPageBuilder {
 
     private static String buildRunDateTime(String startTime, String endTime) {
         boolean hasStart = startTime != null && !startTime.isBlank();
-        boolean hasEnd   = endTime   != null && !endTime.isBlank();
+        boolean hasEnd = endTime != null && !endTime.isBlank();
         if (hasStart && hasEnd) return startTime.trim() + " - " + endTime.trim();
         if (hasStart) return startTime.trim();
         return "";

@@ -22,12 +22,12 @@ import java.nio.charset.StandardCharsets;
  */
 public final class PromptLoader {
 
+    static final String PROMPT_FILE_NAME = "ai-reporter-prompt.txt";
+    static final String RESOURCE_PATH = "/" + PROMPT_FILE_NAME;
     private static final Logger log = LoggerFactory.getLogger(PromptLoader.class);
 
-    static final String PROMPT_FILE_NAME = "ai-reporter-prompt.txt";
-    static final String RESOURCE_PATH    = "/" + PROMPT_FILE_NAME;
-
-    private PromptLoader() {}
+    private PromptLoader() {
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Public API

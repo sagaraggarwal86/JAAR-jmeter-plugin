@@ -44,7 +44,9 @@ class PromptBuilderTest {
     // Helpers
     // ─────────────────────────────────────────────────────────────
 
-    /** Creates a passed {@link SampleResult} with the given elapsed time in ms. */
+    /**
+     * Creates a passed {@link SampleResult} with the given elapsed time in ms.
+     */
     private static SampleResult passedSample(long elapsedMs) {
         SampleResult sr = new SampleResult();
         sr.setStampAndTime(sr.getTimeStamp(), elapsedMs);
@@ -52,7 +54,9 @@ class PromptBuilderTest {
         return sr;
     }
 
-    /** Creates a failed {@link SampleResult} with the given elapsed time in ms. */
+    /**
+     * Creates a failed {@link SampleResult} with the given elapsed time in ms.
+     */
     private static SampleResult failedSample(long elapsedMs) {
         SampleResult sr = new SampleResult();
         sr.setStampAndTime(sr.getTimeStamp(), elapsedMs);
@@ -119,7 +123,7 @@ class PromptBuilderTest {
         @DisplayName("system prompt is identical across two calls — it is a constant")
         void systemPromptIsConstant() {
             PromptBuilder builder = new PromptBuilder();
-            String first  = builder.build(minimalResults(), 90, PromptRequest.empty(), java.util.Collections.emptyList(), PromptBuilder.LatencyContext.ABSENT).systemPrompt();
+            String first = builder.build(minimalResults(), 90, PromptRequest.empty(), java.util.Collections.emptyList(), PromptBuilder.LatencyContext.ABSENT).systemPrompt();
             String second = builder.build(minimalResults(), 50, PromptRequest.empty(), java.util.Collections.emptyList(), PromptBuilder.LatencyContext.ABSENT).systemPrompt();
             assertEquals(first, second,
                     "systemPrompt must be the static constant regardless of input");

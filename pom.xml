@@ -9,7 +9,9 @@
     <version>4.5.0</version>
     <packaging>jar</packaging>
     <name>JAAR — JTL AI Analysis &amp; Reporting</name>
-    <description>JAAR is an AI-powered JMeter listener plugin that analyses load test results and generates intelligent performance reports with PASS/FAIL verdicts.</description>
+    <description>JAAR is an AI-powered JMeter listener plugin that analyses load test results and generates intelligent
+        performance reports with PASS/FAIL verdicts.
+    </description>
     <url>https://github.com/sagaraggarwal86/jaar-jmeter-plugin</url>
 
     <licenses>
@@ -243,12 +245,16 @@
                 <executions>
                     <execution>
                         <id>jacoco-prepare</id>
-                        <goals><goal>prepare-agent</goal></goals>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
                     </execution>
                     <execution>
                         <id>jacoco-check</id>
                         <phase>verify</phase>
-                        <goals><goal>check</goal></goals>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
                         <configuration>
                             <rules>
                                 <rule>
@@ -293,7 +299,9 @@
                     <execution>
                         <id>jacoco-report</id>
                         <phase>verify</phase>
-                        <goals><goal>report</goal></goals>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>

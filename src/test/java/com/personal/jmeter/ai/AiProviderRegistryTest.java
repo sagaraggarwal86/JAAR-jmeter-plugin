@@ -130,9 +130,9 @@ class AiProviderRegistryTest {
 
             assertEquals(3, providers.size(), "Should discover 3 configured providers");
             // Known order: groq before openai (canonical list), then zebra (unknown, alphabetical)
-            assertEquals("groq",   providers.get(0).providerKey);
+            assertEquals("groq", providers.get(0).providerKey);
             assertEquals("openai", providers.get(1).providerKey);
-            assertEquals("zebra",  providers.get(2).providerKey);
+            assertEquals("zebra", providers.get(2).providerKey);
         }
 
         @Test

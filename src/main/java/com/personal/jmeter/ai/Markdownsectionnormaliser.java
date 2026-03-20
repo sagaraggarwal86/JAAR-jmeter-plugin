@@ -28,9 +28,9 @@ import org.slf4j.LoggerFactory;
  */
 final class MarkdownSectionNormaliser {
 
-    private static final Logger log = LoggerFactory.getLogger(MarkdownSectionNormaliser.class);
-
-    /** All seven expected section headings, used for duplicate detection. */
+    /**
+     * All seven expected section headings, used for duplicate detection.
+     */
     static final String[] EXPECTED_HEADINGS = {
             "## Executive Summary",
             "## Bottleneck Analysis",
@@ -40,6 +40,7 @@ final class MarkdownSectionNormaliser {
             "## Recommendations",
             "## Verdict",
     };
+    private static final Logger log = LoggerFactory.getLogger(MarkdownSectionNormaliser.class);
 
     private MarkdownSectionNormaliser() { /* static utility */ }
 
@@ -59,7 +60,7 @@ final class MarkdownSectionNormaliser {
      *
      * @param markdown raw AI-generated Markdown; may be null
      * @return Markdown with earlier duplicate headings removed;
-     *         the original string if no duplicates were found
+     * the original string if no duplicates were found
      */
     static String normalise(String markdown) {
         if (markdown == null || markdown.isBlank()) return markdown;
@@ -69,7 +70,7 @@ final class MarkdownSectionNormaliser {
         // Pass 1 — find the last line index of each expected heading.
         // Headings that appear only once are not in this map (no dedup needed).
         java.util.Map<String, Integer> lastIndex = new java.util.HashMap<>();
-        java.util.Map<String, Integer> count     = new java.util.HashMap<>();
+        java.util.Map<String, Integer> count = new java.util.HashMap<>();
         for (int i = 0; i < lines.length; i++) {
             String trimmed = lines[i].trim();
             for (String h : EXPECTED_HEADINGS) {
@@ -82,8 +83,8 @@ final class MarkdownSectionNormaliser {
         }
 
         // Pass 2 — emit lines, skipping any heading occurrence that is not the last.
-        boolean       changed = false;
-        StringBuilder sb      = new StringBuilder();
+        boolean changed = false;
+        StringBuilder sb = new StringBuilder();
         for (int i = 0; i < lines.length; i++) {
             String trimmed = lines[i].trim();
             boolean isDuplicate = false;

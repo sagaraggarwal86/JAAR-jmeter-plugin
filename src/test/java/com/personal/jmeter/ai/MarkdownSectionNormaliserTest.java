@@ -16,6 +16,15 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("MarkdownSectionNormaliser")
 class MarkdownSectionNormaliserTest {
 
+    private static int countOccurrences(String text, String target) {
+        int count = 0, idx = 0;
+        while ((idx = text.indexOf(target, idx)) != -1) {
+            count++;
+            idx += target.length();
+        }
+        return count;
+    }
+
     @Nested
     @DisplayName("no-op cases")
     class NoOp {
@@ -54,6 +63,10 @@ class MarkdownSectionNormaliserTest {
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Helper
+    // ─────────────────────────────────────────────────────────────
+
     @Nested
     @DisplayName("duplicate removal")
     class DuplicateRemoval {
@@ -77,7 +90,7 @@ class MarkdownSectionNormaliserTest {
             // Content must sit directly under the heading
             int headingIdx = result.indexOf("## Executive Summary");
             int contentIdx = result.indexOf("The load test ran for 3 hours.");
-            int nextH2Idx  = result.indexOf("## Bottleneck Analysis");
+            int nextH2Idx = result.indexOf("## Bottleneck Analysis");
             assertTrue(contentIdx > headingIdx && contentIdx < nextH2Idx,
                     "content must appear between ## Executive Summary and ## Bottleneck Analysis");
         }
@@ -125,15 +138,5 @@ class MarkdownSectionNormaliserTest {
             assertEquals(1, countOccurrences(result, "## Executive Summary"));
             assertEquals(1, countOccurrences(result, "## Bottleneck Analysis"));
         }
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Helper
-    // ─────────────────────────────────────────────────────────────
-
-    private static int countOccurrences(String text, String target) {
-        int count = 0, idx = 0;
-        while ((idx = text.indexOf(target, idx)) != -1) { count++; idx += target.length(); }
-        return count;
     }
 }

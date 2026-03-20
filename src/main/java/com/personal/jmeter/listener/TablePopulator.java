@@ -20,12 +20,18 @@ import java.util.*;
  */
 public final class TablePopulator {
 
-    /** DecimalFormat for integer-rounded values (response times). */
+    /**
+     * DecimalFormat for integer-rounded values (response times).
+     */
     private static final DecimalFormat FORMAT_INTEGER = new DecimalFormat("#");
-    /** DecimalFormat for one decimal place (std deviation). */
-    private static final DecimalFormat FORMAT_ONE_DP   = new DecimalFormat("0.0");
-    /** DecimalFormat for two decimal places (error rate). */
-    private static final DecimalFormat FORMAT_TWO_DP   = new DecimalFormat("0.00");
+    /**
+     * DecimalFormat for one decimal place (std deviation).
+     */
+    private static final DecimalFormat FORMAT_ONE_DP = new DecimalFormat("0.0");
+    /**
+     * DecimalFormat for two decimal places (error rate).
+     */
+    private static final DecimalFormat FORMAT_TWO_DP = new DecimalFormat("0.00");
 
     private final DefaultTableModel tableModel;
     private final JTable resultsTable;
@@ -56,6 +62,56 @@ public final class TablePopulator {
     // ─────────────────────────────────────────────────────────────
     // Table population
     // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Builds a single data row as formatted strings.
+     *
+     * <p>Single source of truth for row formatting — used by both
+     * {@link #buildRow} (GUI table) and
+     * {@link com.personal.jmeter.cli.CliReportPipeline} (CLI HTML report).</p>
+     *
+     * @param calc      aggregated statistics for one label
+     * @param pFraction percentile as a fraction (e.g. 0.90 for P90)
+     * @return 13-element string array matching {@link AggregateReportPanel#ALL_COLUMNS}
+     */
+    public static String[] buildRowAsStrings(SamplingStatCalculator calc, double pFraction) {
+        long total = calc.getCount();
+        long failed = Math.min(Math.round(calc.getErrorPercentage() * total), total);
+        return new String[]{
+                calc.getLabel(),
+                String.valueOf(total),
+                String.valueOf(total - failed),
+                String.valueOf(failed),
+                FORMAT_INTEGER.format(calc.getMean()),
+                String.valueOf(calc.getMin().intValue()),
+                String.valueOf(calc.getMax().intValue()),
+                FORMAT_INTEGER.format(calc.getPercentPoint(pFraction).doubleValue()),
+                FORMAT_ONE_DP.format(calc.getStandardDeviation()),
+                FORMAT_TWO_DP.format(calc.getErrorPercentage() * 100.0) + "%",
+                String.format("%.2f/sec", calc.getRate()),
+                FORMAT_TWO_DP.format(calc.getKBPerSecond()),
+                FORMAT_ONE_DP.format(calc.getAvgPageBytes())
+        };
+    }
+
+    private static int compareTableValues(Object a, Object b) {
+        double da = parseNumericCell(a);
+        double db = parseNumericCell(b);
+        if (!Double.isNaN(da) && !Double.isNaN(db)) {
+            return Double.compare(da, db);
+        }
+        return String.valueOf(a).compareTo(String.valueOf(b));
+    }
+
+    private static double parseNumericCell(Object val) {
+        if (val == null) return Double.NaN;
+        String s = val.toString().replace("%", "").replace("/sec", "").trim();
+        try {
+            return Double.parseDouble(s);
+        } catch (NumberFormatException e) {
+            return Double.NaN;
+        }
+    }
 
     /**
      * Clears and repopulates the table from the given results map.
@@ -99,6 +155,10 @@ public final class TablePopulator {
         if (totalRow != null) tableModel.addRow(totalRow);
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Sorting
+    // ─────────────────────────────────────────────────────────────
+
     private Object[] buildRow(SamplingStatCalculator calc, double pFraction) {
         String[] s = buildRowAsStrings(calc, pFraction);
         return new Object[]{
@@ -107,37 +167,6 @@ public final class TablePopulator {
                 Long.parseLong(s[2]),   // Passed
                 Long.parseLong(s[3]),   // Failed
                 s[4], s[5], s[6], s[7], s[8], s[9], s[10], s[11], s[12]
-        };
-    }
-
-    /**
-     * Builds a single data row as formatted strings.
-     *
-     * <p>Single source of truth for row formatting — used by both
-     * {@link #buildRow} (GUI table) and
-     * {@link com.personal.jmeter.cli.CliReportPipeline} (CLI HTML report).</p>
-     *
-     * @param calc      aggregated statistics for one label
-     * @param pFraction percentile as a fraction (e.g. 0.90 for P90)
-     * @return 13-element string array matching {@link AggregateReportPanel#ALL_COLUMNS}
-     */
-    public static String[] buildRowAsStrings(SamplingStatCalculator calc, double pFraction) {
-        long total  = calc.getCount();
-        long failed = Math.min(Math.round(calc.getErrorPercentage() * total), total);
-        return new String[]{
-                calc.getLabel(),
-                String.valueOf(total),
-                String.valueOf(total - failed),
-                String.valueOf(failed),
-                FORMAT_INTEGER.format(calc.getMean()),
-                String.valueOf(calc.getMin().intValue()),
-                String.valueOf(calc.getMax().intValue()),
-                FORMAT_INTEGER.format(calc.getPercentPoint(pFraction).doubleValue()),
-                FORMAT_ONE_DP.format(calc.getStandardDeviation()),
-                FORMAT_TWO_DP.format(calc.getErrorPercentage() * 100.0) + "%",
-                String.format("%.1f/sec", calc.getRate()),
-                FORMAT_TWO_DP.format(calc.getKBPerSecond()),
-                FORMAT_ONE_DP.format(calc.getAvgPageBytes())
         };
     }
 
@@ -151,16 +180,12 @@ public final class TablePopulator {
         });
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Sorting
-    // ─────────────────────────────────────────────────────────────
-
     /**
      * Cycles sort state and repopulates. Per-column cycle: ↕ unsorted → ↑ ascending
      * → ↓ descending → ↕ unsorted. Repaints the header after each state change.
      *
-     * @param viewCol  the clicked view-column index
-     * @param repopFn  callback to repopulate the table after updating sort state
+     * @param viewCol the clicked view-column index
+     * @param repopFn callback to repopulate the table after updating sort state
      */
     void handleHeaderClick(int viewCol, Runnable repopFn) {
         if (viewCol < 0) return;
@@ -172,12 +197,16 @@ public final class TablePopulator {
                 sortColumn = -1;         // ↓ → unsorted ↕
             }
         } else {
-            sortColumn    = modelCol;
+            sortColumn = modelCol;
             sortAscending = true;        // new column → ↑
         }
         repopFn.run();
         resultsTable.getTableHeader().repaint();
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Column visibility
+    // ─────────────────────────────────────────────────────────────
 
     /**
      * Returns the model column index currently used for sorting, or {@code -1} if unsorted.
@@ -198,7 +227,7 @@ public final class TablePopulator {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Column visibility
+    // Row snapshot
     // ─────────────────────────────────────────────────────────────
 
     /**
@@ -211,6 +240,10 @@ public final class TablePopulator {
             allTableColumns[i] = cm.getColumn(i);
         }
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────
 
     /**
      * Shows or hides the column at {@code colIndex}, maintaining the original order.
@@ -234,10 +267,6 @@ public final class TablePopulator {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Row snapshot
-    // ─────────────────────────────────────────────────────────────
-
     /**
      * Returns a snapshot of the currently visible rows (TOTAL excluded) as
      * unmodifiable {@code String[]} arrays.
@@ -257,28 +286,5 @@ public final class TablePopulator {
             rows.add(cells);
         }
         return Collections.unmodifiableList(rows);
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Helpers
-    // ─────────────────────────────────────────────────────────────
-
-    private static int compareTableValues(Object a, Object b) {
-        double da = parseNumericCell(a);
-        double db = parseNumericCell(b);
-        if (!Double.isNaN(da) && !Double.isNaN(db)) {
-            return Double.compare(da, db);
-        }
-        return String.valueOf(a).compareTo(String.valueOf(b));
-    }
-
-    private static double parseNumericCell(Object val) {
-        if (val == null) return Double.NaN;
-        String s = val.toString().replace("%", "").replace("/sec", "").trim();
-        try {
-            return Double.parseDouble(s);
-        } catch (NumberFormatException e) {
-            return Double.NaN;
-        }
     }
 }

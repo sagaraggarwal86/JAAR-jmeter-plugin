@@ -15,52 +15,36 @@ public final class SlaConfig {
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Which response-time column is compared against {@link #rtThresholdMs}.
-     * {@code AVG} → Avg (ms) column.
-     * {@code PNN} → Pnn (ms) column (driven by the configured percentile).
+     * Error-rate threshold (0–99). {@code -1} = disabled.
      */
-    public enum RtMetric { AVG, PNN }
+    public final double errorPctThreshold;
 
     // ─────────────────────────────────────────────────────────────
     // Fields
     // ─────────────────────────────────────────────────────────────
-
-    /** Error-rate threshold (0–99). {@code -1} = disabled. */
-    public final double errorPctThreshold;
-
-    /** Which response-time column to compare. Never null. */
+    /**
+     * Which response-time column to compare. Never null.
+     */
     public final RtMetric rtMetric;
-
-    /** Response-time threshold in milliseconds. {@code -1} = disabled. */
+    /**
+     * Response-time threshold in milliseconds. {@code -1} = disabled.
+     */
     public final long rtThresholdMs;
-
-    /** Currently configured percentile — drives the PNN column label. */
+    /**
+     * Currently configured percentile — drives the PNN column label.
+     */
     public final int percentile;
-
-    // ─────────────────────────────────────────────────────────────
-    // Constructor (private — use factory methods)
-    // ─────────────────────────────────────────────────────────────
 
     private SlaConfig(double errorPctThreshold, RtMetric rtMetric,
                       long rtThresholdMs, int percentile) {
         this.errorPctThreshold = errorPctThreshold;
-        this.rtMetric          = rtMetric;
-        this.rtThresholdMs     = rtThresholdMs;
-        this.percentile        = percentile;
+        this.rtMetric = rtMetric;
+        this.rtThresholdMs = rtThresholdMs;
+        this.percentile = percentile;
     }
 
     // ─────────────────────────────────────────────────────────────
-    // State queries
-    // ─────────────────────────────────────────────────────────────
-
-    /** @return {@code true} if the error-rate threshold is active. */
-    public boolean isErrorPctEnabled() { return errorPctThreshold >= 0; }
-
-    /** @return {@code true} if the response-time threshold is active. */
-    public boolean isRtEnabled() { return rtThresholdMs >= 0; }
-
-    // ─────────────────────────────────────────────────────────────
-    // Factory methods
+    // Constructor (private — use factory methods)
     // ─────────────────────────────────────────────────────────────
 
     /**
@@ -91,6 +75,10 @@ public final class SlaConfig {
                 percentile);
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // State queries
+    // ─────────────────────────────────────────────────────────────
+
     /**
      * Returns a config with all thresholds disabled.
      *
@@ -100,4 +88,29 @@ public final class SlaConfig {
     static SlaConfig disabled(int percentile) {
         return new SlaConfig(-1, RtMetric.PNN, -1, percentile);
     }
+
+    /**
+     * @return {@code true} if the error-rate threshold is active.
+     */
+    public boolean isErrorPctEnabled() {
+        return errorPctThreshold >= 0;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Factory methods
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * @return {@code true} if the response-time threshold is active.
+     */
+    public boolean isRtEnabled() {
+        return rtThresholdMs >= 0;
+    }
+
+    /**
+     * Which response-time column is compared against {@link #rtThresholdMs}.
+     * {@code AVG} → Avg (ms) column.
+     * {@code PNN} → Pnn (ms) column (driven by the configured percentile).
+     */
+    public enum RtMetric {AVG, PNN}
 }
