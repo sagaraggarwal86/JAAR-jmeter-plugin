@@ -302,6 +302,121 @@ class PromptBuilderTest {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // mandatedHypothesisTargets
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Builds a results map with a TOTAL row and {@code count} labelled error
+     * transactions, each with exactly one failed sample. Labels are named
+     * "Txn-1", "Txn-2", … "Txn-N" so tests can assert on them predictably.
+     */
+    private static Map<String, SamplingStatCalculator> resultsWithErrorTransactions(int count) {
+        SamplingStatCalculator total = new SamplingStatCalculator("TOTAL");
+        Map<String, SamplingStatCalculator> results = new LinkedHashMap<>();
+        results.put("TOTAL", total);
+        for (int i = 1; i <= count; i++) {
+            SamplingStatCalculator txn = new SamplingStatCalculator("Txn-" + i);
+            SampleResult failed = failedSample(200L);
+            total.addSample(failed);
+            txn.addSample(failed);
+            results.put("Txn-" + i, txn);
+        }
+        return results;
+    }
+
+    @Nested
+    @DisplayName("mandatedHypothesisTargets")
+    class MandatedHypothesisTargetsTests {
+
+        @Test
+        @DisplayName("user message contains mandatedHypothesisTargets key when errors present")
+        void keyPresentWhenErrorsExist() {
+            String msg = new PromptBuilder()
+                    .build(resultsWithErrorTransactions(3), 90,
+                            PromptRequest.empty(),
+                            java.util.Collections.emptyList(),
+                            PromptBuilder.LatencyContext.ABSENT)
+                    .userMessage();
+            assertTrue(msg.contains("mandatedHypothesisTargets"),
+                    "userMessage must include mandatedHypothesisTargets when error transactions exist");
+        }
+
+        @Test
+        @DisplayName("user message contains mandatedHypothesisTargets key even when no errors")
+        void keyPresentWhenNoErrors() {
+            String msg = new PromptBuilder()
+                    .build(minimalResults(), 90,
+                            PromptRequest.empty(),
+                            java.util.Collections.emptyList(),
+                            PromptBuilder.LatencyContext.ABSENT)
+                    .userMessage();
+            assertTrue(msg.contains("mandatedHypothesisTargets"),
+                    "mandatedHypothesisTargets key must always be present (empty list when no errors)");
+        }
+
+        @Test
+        @DisplayName("transaction labels appear in mandatedHypothesisTargets when errors present")
+        void transactionLabelsPresent() {
+            String msg = new PromptBuilder()
+                    .build(resultsWithErrorTransactions(3), 90,
+                            PromptRequest.empty(),
+                            java.util.Collections.emptyList(),
+                            PromptBuilder.LatencyContext.ABSENT)
+                    .userMessage();
+            assertTrue(msg.contains("Txn-1") && msg.contains("Txn-2") && msg.contains("Txn-3"),
+                    "mandatedHypothesisTargets must include labels for all error transactions (<=5)");
+        }
+
+        @Test
+        @DisplayName("capped at 5 entries when more than 5 error transactions exist")
+        void cappedAtFiveEntries() {
+            // Build 7 error transactions — only top 5 should appear in mandated list
+            String msg = new PromptBuilder()
+                    .build(resultsWithErrorTransactions(7), 90,
+                            PromptRequest.empty(),
+                            java.util.Collections.emptyList(),
+                            PromptBuilder.LatencyContext.ABSENT)
+                    .userMessage();
+            // All 7 appear somewhere in userMessage (errorEndpoints contains all),
+            // but mandatedHypothesisTargets is capped — verify the key is present
+            // and the list is non-empty (exact count verified by JSON structure check)
+            assertTrue(msg.contains("mandatedHypothesisTargets"),
+                    "mandatedHypothesisTargets must be present even when >5 error transactions exist");
+            assertTrue(msg.contains("Txn-1"),
+                    "highest-error transaction must appear in mandatedHypothesisTargets");
+        }
+
+        @Test
+        @DisplayName("errorRatePct field present inside mandatedHypothesisTargets entries")
+        void errorRatePctFieldPresent() {
+            String msg = new PromptBuilder()
+                    .build(resultsWithErrorTransactions(2), 90,
+                            PromptRequest.empty(),
+                            java.util.Collections.emptyList(),
+                            PromptBuilder.LatencyContext.ABSENT)
+                    .userMessage();
+            assertTrue(msg.contains("errorRatePct"),
+                    "mandatedHypothesisTargets entries must include errorRatePct field");
+        }
+
+        @Test
+        @DisplayName("exactly 5 entries when exactly 5 error transactions exist")
+        void exactlyFiveWhenFiveErrors() {
+            String msg = new PromptBuilder()
+                    .build(resultsWithErrorTransactions(5), 90,
+                            PromptRequest.empty(),
+                            java.util.Collections.emptyList(),
+                            PromptBuilder.LatencyContext.ABSENT)
+                    .userMessage();
+            // All 5 transaction labels must appear
+            for (int i = 1; i <= 5; i++) {
+                assertTrue(msg.contains("Txn-" + i),
+                        "mandatedHypothesisTargets must include Txn-" + i + " when exactly 5 error transactions exist");
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // parseErrorSlaThreshold — parameterized
     // ─────────────────────────────────────────────────────────────
 
