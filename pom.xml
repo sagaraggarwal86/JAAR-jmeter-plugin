@@ -37,6 +37,13 @@
         <url>https://github.com/sagaraggarwal86/jaar-jmeter-plugin/tree/main</url>
     </scm>
 
+    <distributionManagement>
+        <repository>
+            <id>central</id>
+            <url>https://central.sonatype.com/api/v1/publisher/upload</url>
+        </repository>
+    </distributionManagement>
+
     <properties>
         <jmeter.version>5.6.3</jmeter.version>
         <java.version>17</java.version>
