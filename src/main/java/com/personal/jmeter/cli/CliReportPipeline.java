@@ -1,16 +1,24 @@
 package com.personal.jmeter.cli;
 
-import com.personal.jmeter.ai.*;
-import com.personal.jmeter.listener.TransactionFilter;
-import com.personal.jmeter.listener.TablePopulator;
+import com.personal.jmeter.ai.prompt.PromptBuilder;
+import com.personal.jmeter.ai.prompt.PromptContent;
+import com.personal.jmeter.ai.prompt.PromptLoader;
+import com.personal.jmeter.ai.prompt.PromptRequest;
+import com.personal.jmeter.ai.provider.*;
+import com.personal.jmeter.ai.report.HtmlReportRenderer;
+import com.personal.jmeter.ai.report.MarkdownUtils;
+import com.personal.jmeter.listener.core.TablePopulator;
+import com.personal.jmeter.listener.core.TransactionFilter;
 import com.personal.jmeter.parser.DelimiterResolver;
 import com.personal.jmeter.parser.JTLParser;
+import com.personal.jmeter.parser.TimestampFormatResolver;
 import org.apache.jmeter.visualizers.SamplingStatCalculator;
 
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Headless pipeline: parse JTL → build prompt → call AI → render HTML.
@@ -21,32 +29,18 @@ import java.util.*;
  */
 final class CliReportPipeline {
 
-    /**
-     * Immutable result returned by {@link #execute()}.
-     * Carries the output HTML path and the extracted AI verdict.
-     *
-     * @param outputPath absolute path of the generated HTML report
-     * @param verdict    extracted verdict: "PASS", "FAIL", or "UNDECISIVE"
-     */
-    record PipelineResult(String outputPath, String verdict) {}
-
     private final CliArgs args;
     private final PrintStream progress;
-
     CliReportPipeline(CliArgs args) {
-        this.args     = args;
+        this.args = args;
         this.progress = System.err;
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // Public entry point
-    // ─────────────────────────────────────────────────────────────
 
     /**
      * Executes the full pipeline.
      *
      * @return {@link PipelineResult} containing the absolute path of the generated
-     *         HTML report and the extracted AI verdict ("PASS", "FAIL", or "UNDECISIVE")
+     * HTML report and the extracted AI verdict ("PASS", "FAIL", or "UNDECISIVE")
      * @throws IOException on parse, AI, or write failure
      */
     PipelineResult execute() throws IOException {
@@ -97,8 +91,11 @@ final class CliReportPipeline {
         progress("Calling %s (this may take 30-60 seconds)...", provider.displayName);
         AiReportService service = new AiReportService(provider);
         final String markdown;
+        final long aiElapsedMs;
         try {
+            long aiStart = System.currentTimeMillis();
             markdown = service.generateReport(prompt);
+            aiElapsedMs = System.currentTimeMillis() - aiStart;
         } catch (AiServiceException ex) {
             // Evict the ping cache when the provider rejects the request with an auth error
             // (HTTP 401 = key rejected, HTTP 403 = access denied / quota exceeded).
@@ -111,10 +108,10 @@ final class CliReportPipeline {
             }
             throw ex;
         }
-        progress("AI response received (%d characters).", markdown.length());
+        progress("AI response received: %d chars in %.1fs.", markdown.length(), aiElapsedMs / 1000.0);
 
         // Step 8 — Extract verdict and strip machine verdict line before rendering
-        String verdict       = MarkdownUtils.extractVerdict(markdown);
+        String verdict = MarkdownUtils.extractVerdict(markdown);
         String verdictSource = MarkdownUtils.verdictSource(markdown);
         String strippedMarkdown = MarkdownUtils.stripVerdictLine(markdown);
         progress("Verdict: %s (source: %s)", verdict, verdictSource);
@@ -130,18 +127,23 @@ final class CliReportPipeline {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Filter options
+    // Public entry point
     // ─────────────────────────────────────────────────────────────
 
     private JTLParser.FilterOptions buildFilterOptions() {
         JTLParser.FilterOptions opts = new JTLParser.FilterOptions();
-        opts.startOffset         = args.startOffset();
-        opts.endOffset           = args.endOffset();
-        opts.percentile          = args.percentile();
+        opts.startOffset = args.startOffset();
+        opts.endOffset = args.endOffset();
+        opts.percentile = args.percentile();
         opts.chartIntervalSeconds = args.chartInterval();
-        opts.delimiter           = DelimiterResolver.resolve(resolveJmeterHome());
+        opts.delimiter = DelimiterResolver.resolve(resolveJmeterHome());
+        opts.timestampFormatter = TimestampFormatResolver.resolve(resolveJmeterHome());
         return opts;
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Filter options
+    // ─────────────────────────────────────────────────────────────
 
     /**
      * Resolves JMETER_HOME for delimiter detection.
@@ -168,10 +170,6 @@ final class CliReportPipeline {
         return null;
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Table row building (delegates to TablePopulator — single source of truth)
-    // ─────────────────────────────────────────────────────────────
-
     private List<String[]> buildTableRows(JTLParser.ParseResult result, int percentile) {
         double pFraction = percentile / 100.0;
         List<String[]> rows = new ArrayList<>();
@@ -194,7 +192,7 @@ final class CliReportPipeline {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Provider resolution
+    // Table row building (delegates to TablePopulator — single source of truth)
     // ─────────────────────────────────────────────────────────────
 
     private AiProviderConfig resolveProvider() throws IOException {
@@ -213,7 +211,7 @@ final class CliReportPipeline {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Prompt content
+    // Provider resolution
     // ─────────────────────────────────────────────────────────────
 
     private PromptContent buildPromptContent(JTLParser.ParseResult result,
@@ -249,14 +247,14 @@ final class CliReportPipeline {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Render config
+    // Prompt content
     // ─────────────────────────────────────────────────────────────
 
     private HtmlReportRenderer.RenderConfig buildRenderConfig(JTLParser.ParseResult result,
                                                               TimeContext timeCtx,
                                                               AiProviderConfig provider) {
         double errorSla = args.hasErrorSla() ? (double) args.errorSla() : -1.0;
-        long   rtSla    = args.hasRtSla()    ? (long)   args.rtSla()    : -1L;
+        long rtSla = args.hasRtSla() ? (long) args.rtSla() : -1L;
         String rtMetric = "percentile".equals(args.rtMetric()) ? "pnn" : "avg";
         return new HtmlReportRenderer.RenderConfig(
                 timeCtx.users(),
@@ -272,11 +270,25 @@ final class CliReportPipeline {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Formatting helpers
+    // Render config
     // ─────────────────────────────────────────────────────────────
 
     private void progress(String format, Object... params) {
         progress.println("[CLI] " + String.format(format, params));
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Formatting helpers
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Immutable result returned by {@link #execute()}.
+     * Carries the output HTML path and the extracted AI verdict.
+     *
+     * @param outputPath absolute path of the generated HTML report
+     * @param verdict    extracted verdict: "PASS", "FAIL", or "UNDECISIVE"
+     */
+    record PipelineResult(String outputPath, String verdict) {
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -290,5 +302,6 @@ final class CliReportPipeline {
      * derivations across two methods.
      */
     private record TimeContext(String startTime, String endTime,
-                               String duration,  String users) {}
+                               String duration, String users) {
+    }
 }

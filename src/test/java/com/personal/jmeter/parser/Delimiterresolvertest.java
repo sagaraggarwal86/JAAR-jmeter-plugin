@@ -11,7 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Unit tests for {@link DelimiterResolver}.
@@ -30,7 +30,9 @@ class DelimiterResolverTest {
     // Helpers
     // ─────────────────────────────────────────────────────────────
 
-    /** Creates {@code $tempDir/bin/<fileName>} with the given content. */
+    /**
+     * Creates {@code $tempDir/bin/<fileName>} with the given content.
+     */
     private File writeProps(String fileName, String content) throws IOException {
         Path binDir = tempDir.resolve("bin");
         Files.createDirectories(binDir);
@@ -38,7 +40,9 @@ class DelimiterResolverTest {
         return tempDir.toFile(); // returns fake JMETER_HOME
     }
 
-    /** Creates both properties files under {@code $tempDir/bin/}. */
+    /**
+     * Creates both properties files under {@code $tempDir/bin/}.
+     */
     private File writeBothProps(String jmeterContent, String userContent) throws IOException {
         Path binDir = tempDir.resolve("bin");
         Files.createDirectories(binDir);

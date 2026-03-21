@@ -24,14 +24,18 @@ class CliArgsTest {
     // Helpers
     // ─────────────────────────────────────────────────────────────
 
-    /** Writes a minimal temporary JTL file and returns its absolute path. */
+    /**
+     * Writes a minimal temporary JTL file and returns its absolute path.
+     */
     private static String tempJtl(Path dir) throws IOException {
         Path f = dir.resolve("test.jtl");
         Files.writeString(f, "timeStamp,elapsed,label\n");
         return f.toString();
     }
 
-    /** Writes a minimal temporary properties file and returns its absolute path. */
+    /**
+     * Writes a minimal temporary properties file and returns its absolute path.
+     */
     private static String tempConfig(Path dir) throws IOException {
         Path f = dir.resolve("ai-reporter.properties");
         Files.writeString(f, "ai.reporter.groq.api.key=gsk_test\n");

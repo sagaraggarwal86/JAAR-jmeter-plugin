@@ -1,6 +1,6 @@
 package com.personal.jmeter;
 
-import com.personal.jmeter.listener.AggregateReportPanel;
+import com.personal.jmeter.listener.gui.AggregateReportPanel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -8,9 +8,10 @@ assignees: ''
 ---
 
 **Plugin version**
-e.g. 4.5.0
+e.g. 4.6.0
 
 **Environment**
+
 - OS: [e.g. Windows 11, macOS 14, Ubuntu 22.04]
 - Java version: [e.g. OpenJDK 17.0.10]
 - JMeter version: [e.g. 5.6.3]

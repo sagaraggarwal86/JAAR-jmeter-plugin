@@ -1,13 +1,12 @@
 package com.personal.jmeter.cli;
 
+import com.personal.jmeter.ai.provider.AiProviderException;
+import com.personal.jmeter.ai.provider.AiServiceException;
+import com.personal.jmeter.parser.JtlParseException;
 import org.apache.jmeter.util.JMeterUtils;
 
 import java.io.IOException;
 import java.net.URL;
-
-import com.personal.jmeter.ai.AiProviderException;
-import com.personal.jmeter.ai.AiServiceException;
-import com.personal.jmeter.parser.JtlParseException;
 
 /**
  * Command-line entry point for JAAR — JTL AI Analysis &amp; Reporting.
@@ -32,27 +31,45 @@ import com.personal.jmeter.parser.JtlParseException;
  * java -cp jaar-jmeter-plugin.jar com.personal.jmeter.cli.Main \
  *   -i results.jtl --provider groq --config ai-reporter.properties
  * </pre>
+ * @since 4.6.0
  */
 public final class Main {
 
-    /** Exit code: AI verdict PASS — pipeline continues. */
-    static final int EXIT_VERDICT_PASS        = 0;
-    /** Exit code: AI verdict FAIL — pipeline gate fails. */
-    static final int EXIT_VERDICT_FAIL        = 1;
-    /** Exit code: AI did not generate a verdict line — pipeline continues. */
-    static final int EXIT_VERDICT_UNDECISIVE  = 2;
-    /** Exit code: invalid command-line arguments. */
-    static final int EXIT_BAD_ARGS            = 3;
-    /** Exit code: JTL parse failure. */
-    static final int EXIT_PARSE_ERROR         = 4;
-    /** Exit code: AI provider error (key, ping, or API). */
-    static final int EXIT_AI_ERROR            = 5;
-    /** Exit code: report file write failure. */
-    static final int EXIT_WRITE_ERROR         = 6;
-    /** Exit code: unexpected / unhandled error (RuntimeException, Error, etc.) — full stack trace printed to stderr. */
-    static final int EXIT_UNEXPECTED_ERROR    = 7;
+    /**
+     * Exit code: AI verdict PASS — pipeline continues.
+     */
+    static final int EXIT_VERDICT_PASS = 0;
+    /**
+     * Exit code: AI verdict FAIL — pipeline gate fails.
+     */
+    static final int EXIT_VERDICT_FAIL = 1;
+    /**
+     * Exit code: AI did not generate a verdict line — pipeline continues.
+     */
+    static final int EXIT_VERDICT_UNDECISIVE = 2;
+    /**
+     * Exit code: invalid command-line arguments.
+     */
+    static final int EXIT_BAD_ARGS = 3;
+    /**
+     * Exit code: JTL parse failure.
+     */
+    static final int EXIT_PARSE_ERROR = 4;
+    /**
+     * Exit code: AI provider error (key, ping, or API).
+     */
+    static final int EXIT_AI_ERROR = 5;
+    /**
+     * Exit code: report file write failure.
+     */
+    static final int EXIT_WRITE_ERROR = 6;
+    /**
+     * Exit code: unexpected / unhandled error (RuntimeException, Error, etc.) — full stack trace printed to stderr.
+     */
+    static final int EXIT_UNEXPECTED_ERROR = 7;
 
-    private Main() {}
+    private Main() {
+    }
 
     /**
      * CLI entry point.
@@ -87,7 +104,7 @@ public final class Main {
             switch (result.verdict()) {
                 case "PASS" -> System.exit(EXIT_VERDICT_PASS);
                 case "FAIL" -> System.exit(EXIT_VERDICT_FAIL);
-                default     -> System.exit(EXIT_VERDICT_UNDECISIVE);
+                default -> System.exit(EXIT_VERDICT_UNDECISIVE);
             }
         } catch (JtlParseException e) {
             System.err.println("Error: " + e.getMessage());

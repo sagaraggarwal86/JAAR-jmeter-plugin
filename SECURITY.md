@@ -17,7 +17,6 @@ please report it responsibly:
    [private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability)
    feature on this repository.
 
-
 ## Scope
 
 This plugin processes JTL files locally and makes outbound HTTPS calls only to

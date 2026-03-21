@@ -1,7 +1,10 @@
 package com.personal.jmeter.parser;
 
 import org.apache.jmeter.util.JMeterUtils;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -21,6 +24,12 @@ import static org.junit.jupiter.api.Assertions.*;
 @DisplayName("JTLParser")
 class JTLParserTest {
 
+    private static final String CSV_HEADER =
+            "timeStamp,elapsed,label,responseCode,responseMessage,"
+                    + "threadName,dataType,success,bytes,sentBytes,Latency,IdleTime,Connect";
+    @TempDir
+    Path tempDir;
+
     /**
      * Initialise {@link JMeterUtils#appProperties} once for this test class.
      *
@@ -38,13 +47,6 @@ class JTLParserTest {
             JMeterUtils.initLocale();
         }
     }
-
-    private static final String CSV_HEADER =
-            "timeStamp,elapsed,label,responseCode,responseMessage,"
-                    + "threadName,dataType,success,bytes,sentBytes,Latency,IdleTime,Connect";
-
-    @TempDir
-    Path tempDir;
 
     private Path writeCsv(String... dataLines) throws IOException {
         Path file = tempDir.resolve("test.jtl");
@@ -139,7 +141,7 @@ class JTLParserTest {
 
         assertFalse(result.results.containsKey("Login-1"), "Login-1 is a sub-result");
         assertFalse(result.results.containsKey("Login-2"), "Login-2 is a sub-result");
-        assertTrue(result.results.containsKey("Login"),    "Parent Login must be present");
+        assertTrue(result.results.containsKey("Login"), "Parent Login must be present");
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -161,7 +163,7 @@ class JTLParserTest {
         JTLParser.ParseResult result = new JTLParser().parse(file.toString(), opts);
 
         assertFalse(result.results.containsKey("EarlyTx"), "EarlyTx should be filtered out");
-        assertTrue(result.results.containsKey("LateTx"),   "LateTx should be included");
+        assertTrue(result.results.containsKey("LateTx"), "LateTx should be included");
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -192,9 +194,9 @@ class JTLParserTest {
         JTLParser.ParseResult result = new JTLParser().parse(
                 file.toString(), new JTLParser.FilterOptions());
 
-        assertTrue(result.startTimeMs > 0,  "startTimeMs should be set");
-        assertTrue(result.endTimeMs   > 0,  "endTimeMs should be set");
-        assertTrue(result.durationMs  >= 0, "durationMs should be non-negative");
+        assertTrue(result.startTimeMs > 0, "startTimeMs should be set");
+        assertTrue(result.endTimeMs > 0, "endTimeMs should be set");
+        assertTrue(result.durationMs >= 0, "durationMs should be non-negative");
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -245,7 +247,7 @@ class JTLParserTest {
         JTLParser.ParseResult result = new JTLParser().parse(file.toString(), opts);
 
         assertTrue(result.results.containsKey("Login - TC"), "Controller row must be present");
-        assertTrue(result.results.containsKey("Login"),      "Child row must be present when generateParentSample=false");
+        assertTrue(result.results.containsKey("Login"), "Child row must be present when generateParentSample=false");
     }
 
     @Test
@@ -254,7 +256,7 @@ class JTLParserTest {
         long ts = System.currentTimeMillis();
         // Two rows: first has empty dataType but different elapsed → should NOT trigger detection
         Path file = writeCsv(
-                ts        + ",100,Some - TC,200,OK,t-1,,true,512,128,80,0,20",   // controller
+                ts + ",100,Some - TC,200,OK,t-1,,true,512,128,80,0,20",   // controller
                 (ts + 50) + ",75,Some,200,OK,t-1,text,true,512,128,70,0,10");    // different ts → not a child
 
         JTLParser.FilterOptions opts = new JTLParser.FilterOptions();
@@ -274,7 +276,7 @@ class JTLParserTest {
         // JMeter sometimes writes the child row 1 ms after the parent's timestamp
         // even though they represent the same transaction. The parser must tolerate this.
         Path file = writeCsv(
-                ts       + ",100,Login - TC,200,OK,t-1,,true,512,128,80,0,20",    // controller
+                ts + ",100,Login - TC,200,OK,t-1,,true,512,128,80,0,20",    // controller
                 (ts + 1) + ",100,Login,200,OK,t-1,text,true,512,128,80,0,20");    // child ts + 1 ms
 
         JTLParser.FilterOptions opts = new JTLParser.FilterOptions();
@@ -417,8 +419,8 @@ class JTLParserTest {
 
         JTLParser.ParseResult result = new JTLParser().parse(file.toString(), opts);
 
-        assertTrue(result.results.containsKey("EarlyTx"),  "EarlyTx should be included");
-        assertFalse(result.results.containsKey("LateTx"),  "LateTx should be filtered out");
+        assertTrue(result.results.containsKey("EarlyTx"), "EarlyTx should be included");
+        assertFalse(result.results.containsKey("LateTx"), "LateTx should be filtered out");
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -443,6 +445,31 @@ class JTLParserTest {
 
     // ─────────────────────────────────────────────────────────────
     // computeAutoBucketSizeMs
+    // ─────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("multiple distinct transaction labels are each aggregated independently")
+    void multipleDistinctLabels() throws IOException {
+        long ts = System.currentTimeMillis();
+        Path file = writeCsv(
+                ts + ",100,Login,200,OK,t-1,text,true,512,128,90,0,20",
+                (ts + 1000) + ",200,Checkout,200,OK,t-1,text,true,512,128,180,0,20",
+                (ts + 2000) + ",150,Search,200,OK,t-1,text,true,512,128,130,0,20");
+
+        JTLParser.ParseResult result = new JTLParser().parse(
+                file.toString(), new JTLParser.FilterOptions());
+
+        assertTrue(result.results.containsKey("Login"), "Login must be present");
+        assertTrue(result.results.containsKey("Checkout"), "Checkout must be present");
+        assertTrue(result.results.containsKey("Search"), "Search must be present");
+        assertTrue(result.results.containsKey("TOTAL"), "TOTAL must be present");
+        assertEquals(1, result.results.get("Login").getCount(), "Login count must be 1");
+        assertEquals(1, result.results.get("Checkout").getCount(), "Checkout count must be 1");
+        assertEquals(3, result.results.get("TOTAL").getCount(), "TOTAL count must be 3");
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Multiple distinct labels
     // ─────────────────────────────────────────────────────────────
 
     @Nested
@@ -509,36 +536,14 @@ class JTLParserTest {
                 long result = JTLParser.computeAutoBucketSizeMs(minTs, System.currentTimeMillis());
                 boolean found = false;
                 for (long snap : snapIntervals) {
-                    if (snap == result) { found = true; break; }
+                    if (snap == result) {
+                        found = true;
+                        break;
+                    }
                 }
                 assertTrue(found, "result " + result + "ms for duration " + dur
                         + "ms must be one of the defined snap intervals");
             }
         }
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Multiple distinct labels
-    // ─────────────────────────────────────────────────────────────
-
-    @Test
-    @DisplayName("multiple distinct transaction labels are each aggregated independently")
-    void multipleDistinctLabels() throws IOException {
-        long ts = System.currentTimeMillis();
-        Path file = writeCsv(
-                ts + ",100,Login,200,OK,t-1,text,true,512,128,90,0,20",
-                (ts + 1000) + ",200,Checkout,200,OK,t-1,text,true,512,128,180,0,20",
-                (ts + 2000) + ",150,Search,200,OK,t-1,text,true,512,128,130,0,20");
-
-        JTLParser.ParseResult result = new JTLParser().parse(
-                file.toString(), new JTLParser.FilterOptions());
-
-        assertTrue(result.results.containsKey("Login"),    "Login must be present");
-        assertTrue(result.results.containsKey("Checkout"), "Checkout must be present");
-        assertTrue(result.results.containsKey("Search"),   "Search must be present");
-        assertTrue(result.results.containsKey("TOTAL"),    "TOTAL must be present");
-        assertEquals(1, result.results.get("Login").getCount(),    "Login count must be 1");
-        assertEquals(1, result.results.get("Checkout").getCount(), "Checkout count must be 1");
-        assertEquals(3, result.results.get("TOTAL").getCount(),    "TOTAL count must be 3");
     }
 }
