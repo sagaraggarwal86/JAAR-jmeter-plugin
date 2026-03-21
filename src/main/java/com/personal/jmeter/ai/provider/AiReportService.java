@@ -1,10 +1,10 @@
 package com.personal.jmeter.ai.provider;
 
-import com.personal.jmeter.ai.prompt.PromptContent;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
+import com.personal.jmeter.ai.prompt.PromptContent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

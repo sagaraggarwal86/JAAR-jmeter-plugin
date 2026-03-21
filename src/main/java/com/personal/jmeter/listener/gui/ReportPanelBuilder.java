@@ -11,7 +11,8 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
-import static com.personal.jmeter.listener.gui.AggregateReportPanel.*;
+import static com.personal.jmeter.listener.gui.AggregateReportPanel.FONT_HEADER;
+import static com.personal.jmeter.listener.gui.AggregateReportPanel.FONT_REGULAR;
 
 /**
  * Assembles the Swing sub-panels and table for {@link AggregateReportPanel}.

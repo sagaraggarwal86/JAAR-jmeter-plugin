@@ -1,10 +1,10 @@
 package com.personal.jmeter.ai.report;
 
+import com.personal.jmeter.ai.prompt.PromptContent;
 import com.personal.jmeter.ai.provider.AiProviderConfig;
 import com.personal.jmeter.ai.provider.AiProviderRegistry;
 import com.personal.jmeter.ai.provider.AiReportService;
 import com.personal.jmeter.ai.provider.AiServiceException;
-import com.personal.jmeter.ai.prompt.PromptContent;
 import com.personal.jmeter.parser.JTLParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

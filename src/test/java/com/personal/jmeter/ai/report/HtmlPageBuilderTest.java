@@ -1,10 +1,9 @@
 package com.personal.jmeter.ai.report;
 
+import com.personal.jmeter.parser.JTLParser;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-
-import com.personal.jmeter.parser.JTLParser;
 
 import java.util.Collections;
 import java.util.List;
@@ -400,13 +399,13 @@ class HtmlPageBuilderTest {
                     + "<h2>Verdict</h2><p>PASS</p>";
             List<String[]> sections = HtmlPageBuilder.splitAtH2(html);
             assertEquals(7, sections.size());
-            assertEquals("Executive Summary",        sections.get(0)[0]);
-            assertEquals("Bottleneck Analysis",      sections.get(1)[0]);
-            assertEquals("Error Analysis",            sections.get(2)[0]);
+            assertEquals("Executive Summary", sections.get(0)[0]);
+            assertEquals("Bottleneck Analysis", sections.get(1)[0]);
+            assertEquals("Error Analysis", sections.get(2)[0]);
             assertEquals("Advanced Web Diagnostics", sections.get(3)[0]);
-            assertEquals("Root Cause Hypotheses",    sections.get(4)[0]);
-            assertEquals("Recommendations",          sections.get(5)[0]);
-            assertEquals("Verdict",                  sections.get(6)[0]);
+            assertEquals("Root Cause Hypotheses", sections.get(4)[0]);
+            assertEquals("Recommendations", sections.get(5)[0]);
+            assertEquals("Verdict", sections.get(6)[0]);
         }
 
         @Test
@@ -507,7 +506,7 @@ class HtmlPageBuilderTest {
         @Test
         @DisplayName("block with script tag splits correctly at <script> boundary")
         void scriptTagSplitsCorrectly() {
-            String divPart    = "<div class=\"charts-section\"><canvas></canvas></div>\n";
+            String divPart = "<div class=\"charts-section\"><canvas></canvas></div>\n";
             String scriptPart = "<script>\n(function(){})()\n</script>\n";
             String chartsBlock = divPart + scriptPart;
             String[] parts = HtmlPageBuilder.splitChartsBlock(chartsBlock);
@@ -547,7 +546,9 @@ class HtmlPageBuilderTest {
     @DisplayName("buildPage — tabbed HTML page structure")
     class BuildPageTests {
 
-        /** Minimal RenderConfig used across all buildPage tests. */
+        /**
+         * Minimal RenderConfig used across all buildPage tests.
+         */
         private HtmlReportRenderer.RenderConfig minimalConfig() {
             return new HtmlReportRenderer.RenderConfig(
                     "100", "Load Test", "Peak hour test",
@@ -603,8 +604,8 @@ class HtmlPageBuilderTest {
             // Use the full HTML element — not just "report-header" which also appears
             // in the CSS <style> block earlier in the string, causing a false position.
             int headerStart = page.indexOf("<div class=\"report-header\">");
-            int headerEnd   = page.indexOf("</div>", headerStart);
-            int firstPanel  = page.indexOf("class=\"tab-panel");
+            int headerEnd = page.indexOf("</div>", headerStart);
+            int firstPanel = page.indexOf("class=\"tab-panel");
             assertTrue(headerStart >= 0, "report-header div must be present in the page");
             assertTrue(headerEnd < firstPanel, "Report header must appear before any tab panel");
         }
@@ -621,8 +622,8 @@ class HtmlPageBuilderTest {
         @DisplayName("Chart.js CDN script is in the head element")
         void chartJsCdnInHead() {
             String page = HtmlPageBuilder.buildPage(sevenSectionBody(), "", "", minimalConfig());
-            int headEnd  = page.indexOf("</head>");
-            int chartJs  = page.indexOf("Chart.js");
+            int headEnd = page.indexOf("</head>");
+            int chartJs = page.indexOf("Chart.js");
             assertTrue(chartJs < headEnd, "Chart.js CDN must be inside <head>");
         }
 
@@ -630,8 +631,8 @@ class HtmlPageBuilderTest {
         @DisplayName("SheetJS CDN script is in the head element")
         void sheetJsCdnInHead() {
             String page = HtmlPageBuilder.buildPage(sevenSectionBody(), "", "", minimalConfig());
-            int headEnd  = page.indexOf("</head>");
-            int sheetJs  = page.indexOf("xlsx");
+            int headEnd = page.indexOf("</head>");
+            int sheetJs = page.indexOf("xlsx");
             assertTrue(sheetJs > 0 && sheetJs < headEnd, "SheetJS CDN must be inside <head>");
         }
 
@@ -693,7 +694,7 @@ class HtmlPageBuilderTest {
             String chartsBlock = HtmlPageBuilder.buildChartsSection(buckets);
             String page = HtmlPageBuilder.buildPage(sevenSectionBody(), "", chartsBlock, minimalConfig());
 
-            int chartScript   = page.indexOf("timeChart(");
+            int chartScript = page.indexOf("timeChart(");
             assertTrue(chartScript > 0, "timeChart call must be present in the page");
 
             // The chart init script must appear AFTER the last tab panel definition.
@@ -754,22 +755,22 @@ class HtmlPageBuilderTest {
             assertTrue(page.contains("window.jaarMeta"), "jaarMeta object must be present");
             assertTrue(page.contains("scenarioName"), "scenarioName field must be present");
             assertTrue(page.contains("scenarioDesc"), "scenarioDesc field must be present");
-            assertTrue(page.contains("users"),        "users field must be present");
-            assertTrue(page.contains("duration"),     "duration field must be present");
+            assertTrue(page.contains("users"), "users field must be present");
+            assertTrue(page.contains("duration"), "duration field must be present");
             assertTrue(page.contains("providerName"), "providerName field must be present");
             // Verify actual config values are embedded
-            assertTrue(page.contains("Load Test"),    "scenarioName value must be embedded");
-            assertTrue(page.contains("1h 0m 0s"),     "duration value must be embedded");
+            assertTrue(page.contains("Load Test"), "scenarioName value must be embedded");
+            assertTrue(page.contains("1h 0m 0s"), "duration value must be embedded");
             // Provider "Groq (Free)" → sanitized "Groq"
-            assertTrue(page.contains("'Groq'"),       "providerName must be tier-stripped to 'Groq'");
+            assertTrue(page.contains("'Groq'"), "providerName must be tier-stripped to 'Groq'");
         }
 
         @Test
         @DisplayName("window.jaarMeta script appears inside the head element")
         void jaarMetaInHead() {
             String page = HtmlPageBuilder.buildPage(sevenSectionBody(), "", "", minimalConfig());
-            int headEnd  = page.indexOf("</head>");
-            int metaIdx  = page.indexOf("window.jaarMeta");
+            int headEnd = page.indexOf("</head>");
+            int metaIdx = page.indexOf("window.jaarMeta");
             assertTrue(metaIdx > 0 && metaIdx < headEnd,
                     "window.jaarMeta must be declared inside <head>");
         }
@@ -787,7 +788,7 @@ class HtmlPageBuilderTest {
         void realChartsSectionHasNoHiddenTable() {
             long now = System.currentTimeMillis();
             List<JTLParser.TimeBucket> buckets = List.of(
-                    new JTLParser.TimeBucket(now,          250.0, 1.5, 10.0, 50.0),
+                    new JTLParser.TimeBucket(now, 250.0, 1.5, 10.0, 50.0),
                     new JTLParser.TimeBucket(now + 30_000, 300.0, 0.0, 12.0, 60.0));
             String chartsBlock = HtmlPageBuilder.buildChartsSection(buckets);
             assertFalse(chartsBlock.contains("jaar-chart-data"),

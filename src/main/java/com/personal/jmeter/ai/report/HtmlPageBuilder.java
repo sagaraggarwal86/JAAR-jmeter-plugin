@@ -47,7 +47,9 @@ final class HtmlPageBuilder {
     private static final Pattern H2_TITLE_PATTERN =
             Pattern.compile("<h2[^>]*>(.*?)</h2>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
-    /** Strips all HTML tags to produce a clean plain-text tab label. */
+    /**
+     * Strips all HTML tags to produce a clean plain-text tab label.
+     */
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
 
     private HtmlPageBuilder() { /* static utility — not instantiable */ }
@@ -108,8 +110,8 @@ final class HtmlPageBuilder {
         // created on page load regardless of which tab is initially visible.
         String[] chartsParts = splitChartsBlock(chartsBlock != null ? chartsBlock : "");
         String chartsContent = chartsParts[0]; // <div class="charts-section">…canvases…</div>
-        String chartsScript  = chartsParts[1]; // <script>(function(){…})();</script>
-        int chartsTabIndex   = sections.size();
+        String chartsScript = chartsParts[1]; // <script>(function(){…})();</script>
+        int chartsTabIndex = sections.size();
         sections.add(new String[]{"Performance Charts", chartsContent});
 
         // ── Tab bar ──────────────────────────────────────────────────────────
@@ -134,7 +136,7 @@ final class HtmlPageBuilder {
         // ── Tab panels ───────────────────────────────────────────────────────
         StringBuilder panels = new StringBuilder();
         for (int i = 0; i < sections.size(); i++) {
-            String title   = sections.get(i)[0];
+            String title = sections.get(i)[0];
             String content = sections.get(i)[1];
             panels.append("<div class=\"tab-panel")
                     .append(i == 0 ? " active" : "")
@@ -195,7 +197,7 @@ final class HtmlPageBuilder {
      *
      * @param htmlBody rendered HTML from {@link #markdownToHtml(String)}; may be null
      * @return mutable list of {@code [title, content]} pairs; never null;
-     *         empty only when {@code htmlBody} is null or blank
+     * empty only when {@code htmlBody} is null or blank
      */
     static List<String[]> splitAtH2(String htmlBody) {
         List<String[]> sections = new ArrayList<>();
@@ -246,7 +248,7 @@ final class HtmlPageBuilder {
      * @param chartsBlock full charts section HTML+JS from {@link #buildChartsSection};
      *                    may be null or empty
      * @return two-element array {@code [panelHtml, scriptHtml]};
-     *         {@code scriptHtml} is empty when no {@code <script>} tag is found
+     * {@code scriptHtml} is empty when no {@code <script>} tag is found
      */
     static String[] splitChartsBlock(String chartsBlock) {
         if (chartsBlock == null || chartsBlock.isBlank()) return new String[]{"", ""};
@@ -293,7 +295,7 @@ final class HtmlPageBuilder {
         List<String> jAvg = new ArrayList<>();
         List<String> jErr = new ArrayList<>();
         List<String> jTps = new ArrayList<>();
-        List<String> jKb  = new ArrayList<>();
+        List<String> jKb = new ArrayList<>();
 
         for (JTLParser.TimeBucket b : timeBuckets) {
             String label = LocalDateTime.ofInstant(
@@ -302,24 +304,27 @@ final class HtmlPageBuilder {
             jAvg.add(String.format(Locale.US, "%.2f", b.avgResponseMs));
             jErr.add(String.format(Locale.US, "%.2f", b.errorPct));
             jTps.add(String.format(Locale.US, "%.2f", b.tps));
-            jKb.add(String.format(Locale.US, "%.2f",  b.kbps));
+            jKb.add(String.format(Locale.US, "%.2f", b.kbps));
         }
 
         // Append a phantom end-point at (last bucket start + interval) so Chart.js
         // extends the x-axis to the true test end time. The null data values ensure
         // nothing is plotted at this position — it is a label anchor only.
         long intervalMs = timeBuckets.get(1).epochMs - timeBuckets.get(0).epochMs;
-        long phantomMs  = timeBuckets.get(timeBuckets.size() - 1).epochMs + intervalMs;
+        long phantomMs = timeBuckets.get(timeBuckets.size() - 1).epochMs + intervalMs;
         String phantomLabel = LocalDateTime.ofInstant(
                 Instant.ofEpochMilli(phantomMs), ZoneId.systemDefault()).format(CHART_TIME_FMT);
         jLabels.add("\"" + phantomLabel + "\"");
-        jAvg.add("null"); jErr.add("null"); jTps.add("null"); jKb.add("null");
+        jAvg.add("null");
+        jErr.add("null");
+        jTps.add("null");
+        jKb.add("null");
 
         String labels = "[" + String.join(",", jLabels) + "]";
         String avgArr = "[" + String.join(",", jAvg) + "]";
         String errArr = "[" + String.join(",", jErr) + "]";
         String tpsArr = "[" + String.join(",", jTps) + "]";
-        String kbArr  = "[" + String.join(",", jKb)  + "]";
+        String kbArr = "[" + String.join(",", jKb) + "]";
 
         long intervalSeconds = (timeBuckets.get(1).epochMs - timeBuckets.get(0).epochMs) / 1_000L;
 
@@ -328,10 +333,10 @@ final class HtmlPageBuilder {
                 .append("  <h2>Performance Charts Over Time</h2>\n")
                 .append("  <p class=\"charts-note\">Each point represents a ")
                 .append(intervalSeconds).append("-second interval.</p>\n")
-                .append(chartBox("chartAvgRt",  "Average Response Time Over Time (ms)"))
+                .append(chartBox("chartAvgRt", "Average Response Time Over Time (ms)"))
                 .append(chartBox("chartErrPct", "Error Rate Over Time (%)"))
-                .append(chartBox("chartTps",    "Throughput Over Time (req/s)"))
-                .append(chartBox("chartKb",     "Received Bandwidth Over Time (KB/s)"))
+                .append(chartBox("chartTps", "Throughput Over Time (req/s)"))
+                .append(chartBox("chartKb", "Received Bandwidth Over Time (KB/s)"))
                 .append("</div>\n")
                 .append("<script>\n(function() {\n")
                 .append("  var labels = ").append(labels).append(";\n")
@@ -517,7 +522,7 @@ final class HtmlPageBuilder {
 
     private static String buildRunDateTime(String startTime, String endTime) {
         boolean hasStart = startTime != null && !startTime.isBlank();
-        boolean hasEnd   = endTime   != null && !endTime.isBlank();
+        boolean hasEnd = endTime != null && !endTime.isBlank();
         if (hasStart && hasEnd) return startTime.trim() + " - " + endTime.trim();
         if (hasStart) return startTime.trim();
         return "";
@@ -685,7 +690,7 @@ final class HtmlPageBuilder {
      * <p>{@code providerName} is the sanitized, tier-stripped provider segment used
      * in filenames — e.g. {@code "Groq (Free)"} → {@code "Groq"} — matching the
      * same stripping logic applied to the HTML report filename in
-     * {@link com.personal.jmeter.ai.AiReportCoordinator}.</p>
+     * {@link com.personal.jmeter.ai.report.AiReportCoordinator}.</p>
      *
      * <p>Values are single-quoted JS strings with {@code '}, {@code \},
      * newline, and carriage-return characters escaped.</p>
@@ -701,10 +706,10 @@ final class HtmlPageBuilder {
                 + "window.jaarMeta = {\n"
                 + "  scenarioName:  " + jsString(config.scenarioName) + ",\n"
                 + "  scenarioDesc:  " + jsString(config.scenarioDesc) + ",\n"
-                + "  users:         " + jsString(config.users)        + ",\n"
-                + "  runDateTime:   " + jsString(runDateTime)         + ",\n"
-                + "  duration:      " + jsString(config.duration)     + ",\n"
-                + "  providerName:  " + jsString(providerName)        + "\n"
+                + "  users:         " + jsString(config.users) + ",\n"
+                + "  runDateTime:   " + jsString(runDateTime) + ",\n"
+                + "  duration:      " + jsString(config.duration) + ",\n"
+                + "  providerName:  " + jsString(providerName) + "\n"
                 + "};\n"
                 + "</script>\n";
     }
@@ -747,7 +752,7 @@ final class HtmlPageBuilder {
         if (value == null || value.isBlank()) return "''";
         return "'" + value
                 .replace("\\", "\\\\")
-                .replace("'",  "\\'")
+                .replace("'", "\\'")
                 .replace("\r", "")
                 .replace("\n", "\\n") + "'";
     }

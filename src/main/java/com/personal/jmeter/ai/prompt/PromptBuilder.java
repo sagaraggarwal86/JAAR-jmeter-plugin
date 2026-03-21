@@ -2,11 +2,10 @@ package com.personal.jmeter.ai.prompt;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.personal.jmeter.parser.JTLParser;
 import org.apache.jmeter.visualizers.SamplingStatCalculator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.personal.jmeter.parser.JTLParser;
 
 import java.util.*;
 

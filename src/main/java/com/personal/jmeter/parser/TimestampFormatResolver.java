@@ -3,11 +3,7 @@ package com.personal.jmeter.parser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 
@@ -34,11 +30,11 @@ import java.time.format.DateTimeFormatter;
  */
 public final class TimestampFormatResolver {
 
-    private static final Logger log = LoggerFactory.getLogger(TimestampFormatResolver.class);
-
-    /** The JMeter property key that defines the JTL timestamp format. */
+    /**
+     * The JMeter property key that defines the JTL timestamp format.
+     */
     static final String PROPERTY_KEY = "jmeter.save.saveservice.timestamp_format";
-
+    private static final Logger log = LoggerFactory.getLogger(TimestampFormatResolver.class);
     /**
      * JMeter's built-in sentinel value for epoch-millisecond timestamps.
      * When encountered, treated identically to an absent property.
@@ -97,7 +93,7 @@ public final class TimestampFormatResolver {
     private static String resolveFormatString(File jmeterHome) {
         if (jmeterHome == null) return null;
 
-        File userProps   = new File(jmeterHome, "bin/user.properties");
+        File userProps = new File(jmeterHome, "bin/user.properties");
         File jmeterProps = new File(jmeterHome, "bin/jmeter.properties");
 
         String fromUser = readFormatFromFile(userProps);
@@ -160,7 +156,7 @@ public final class TimestampFormatResolver {
      *
      * @param line raw line; may be {@code null}
      * @return format string if the line is an active timestamp-format entry
-     *         and not the epoch-ms sentinel; {@code null} otherwise
+     * and not the epoch-ms sentinel; {@code null} otherwise
      */
     static String parseLine(String line) {
         if (line == null) return null;

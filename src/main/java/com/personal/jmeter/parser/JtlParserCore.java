@@ -22,13 +22,6 @@ import java.util.*;
 final class JtlParserCore {
 
     private static final Logger log = LoggerFactory.getLogger(JtlParserCore.class);
-
-    private JtlParserCore() { /* static utility — not instantiable */ }
-
-    // ─────────────────────────────────────────────────────────────
-    // Timestamp format detection
-    // ─────────────────────────────────────────────────────────────
-
     /**
      * Known JMeter datetime timestamp patterns, tried in order during auto-detection.
      * Epoch-ms timestamps are handled separately via {@link Long#parseLong}.
@@ -41,6 +34,23 @@ final class JtlParserCore {
             DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm:ss.SSS"),
             DateTimeFormatter.ofPattern("MM/dd/yyyy HH:mm:ss"),
     };
+
+    // ─────────────────────────────────────────────────────────────
+    // Timestamp format detection
+    // ─────────────────────────────────────────────────────────────
+    /**
+     * Minimum fraction of {@code bucketSizeMs} that a bucket's effective sample
+     * coverage must meet to be included in the chart output.
+     * Buckets below this threshold are partial edge buckets whose TPS and KB/s
+     * values would be artificially deflated by the full-bucket-size denominator.
+     */
+    private static final double MIN_BUCKET_COVERAGE_RATIO = 0.90;
+
+    private JtlParserCore() { /* static utility — not instantiable */ }
+
+    // ─────────────────────────────────────────────────────────────
+    // Timestamp parsing
+    // ─────────────────────────────────────────────────────────────
 
     /**
      * Auto-detects the {@link DateTimeFormatter} from the first raw timestamp value
@@ -59,7 +69,11 @@ final class JtlParserCore {
         if (rawTs == null || rawTs.isEmpty()) return null;
 
         // Epoch ms — no formatter needed
-        try { Long.parseLong(rawTs); return null; } catch (NumberFormatException ignored) {}
+        try {
+            Long.parseLong(rawTs);
+            return null;
+        } catch (NumberFormatException ignored) {
+        }
 
         // Try each known pattern
         for (DateTimeFormatter fmt : KNOWN_TS_FORMATTERS) {
@@ -68,7 +82,8 @@ final class JtlParserCore {
                 log.info("detectTimestampFormatter: detected format '{}' from sample '{}'",
                         fmt, rawTs);
                 return fmt;
-            } catch (DateTimeParseException ignored) {}
+            } catch (DateTimeParseException ignored) {
+            }
         }
 
         log.warn("detectTimestampFormatter: unrecognised timestamp format '{}' — " +
@@ -77,7 +92,7 @@ final class JtlParserCore {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Timestamp parsing
+    // Bucket helpers
     // ─────────────────────────────────────────────────────────────
 
     /**
@@ -101,22 +116,22 @@ final class JtlParserCore {
         if (raw == null || raw.isEmpty()) return 0L;
 
         // 1. Epoch ms — default JMeter format
-        try { return Long.parseLong(raw); } catch (NumberFormatException ignored) {}
+        try {
+            return Long.parseLong(raw);
+        } catch (NumberFormatException ignored) {
+        }
 
         // 2. Auto-detected formatter
         if (formatter != null) {
             try {
                 return LocalDateTime.parse(raw, formatter)
                         .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-            } catch (DateTimeParseException ignored) {}
+            } catch (DateTimeParseException ignored) {
+            }
         }
 
         return 0L;
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // Bucket helpers
-    // ─────────────────────────────────────────────────────────────
 
     /**
      * Converts bucket accumulators into an ordered {@link JTLParser.TimeBucket} list,
@@ -146,7 +161,7 @@ final class JtlParserCore {
                                                        long testStartMs,
                                                        long testEndMs) {
         List<JTLParser.TimeBucket> list = new ArrayList<>(bucketMap.size());
-        long minCoverageMs  = (long) (bucketSizeMs * MIN_BUCKET_COVERAGE_RATIO);
+        long minCoverageMs = (long) (bucketSizeMs * MIN_BUCKET_COVERAGE_RATIO);
 
         // Guard: if the entire test duration fits within one bucket, there are no
         // partial edge buckets to drop — every bucket IS the complete data.
@@ -157,13 +172,13 @@ final class JtlParserCore {
 
         for (Map.Entry<Long, long[]> e : bucketMap.entrySet()) {
             long bucketStart = e.getKey();
-            long bucketEnd   = bucketStart + bucketSizeMs;
+            long bucketEnd = bucketStart + bucketSizeMs;
 
             // Effective coverage = overlap between bucket window and filtered test range.
             // Buckets outside [testStartMs, testEndMs] are already absent from bucketMap;
             // this check catches edge buckets that are only partially covered.
-            long effectiveStart      = Math.max(bucketStart, testStartMs);
-            long effectiveEnd        = Math.min(bucketEnd,   testEndMs);
+            long effectiveStart = Math.max(bucketStart, testStartMs);
+            long effectiveEnd = Math.min(bucketEnd, testEndMs);
             long effectiveCoverageMs = effectiveEnd - effectiveStart;
 
             if (applyCoverageFilter && effectiveCoverageMs < minCoverageMs) {
@@ -173,8 +188,8 @@ final class JtlParserCore {
                 continue;
             }
 
-            long[] acc    = e.getValue();
-            long   count  = acc[1];
+            long[] acc = e.getValue();
+            long count = acc[1];
             // Use effectiveCoverageMs as the denominator when it is meaningful
             // (applyCoverageFilter is true and coverage is a proper sub-window).
             // Fall back to full bucketSizeMs for short tests where the single
@@ -182,22 +197,14 @@ final class JtlParserCore {
             double effectiveSec = (applyCoverageFilter && effectiveCoverageMs > 0)
                     ? effectiveCoverageMs / 1000.0
                     : bucketSizeMs / 1000.0;
-            double avgRt  = count > 0 ? (double) acc[0] / count : 0.0;
+            double avgRt = count > 0 ? (double) acc[0] / count : 0.0;
             double errPct = count > 0 ? (double) acc[2] / count * 100.0 : 0.0;
-            double tps    = count / effectiveSec;
-            double kbps   = (double) acc[3] / effectiveSec / 1024.0;
+            double tps = count / effectiveSec;
+            double kbps = (double) acc[3] / effectiveSec / 1024.0;
             list.add(new JTLParser.TimeBucket(bucketStart, avgRt, errPct, tps, kbps));
         }
         return list;
     }
-
-    /**
-     * Minimum fraction of {@code bucketSizeMs} that a bucket's effective sample
-     * coverage must meet to be included in the chart output.
-     * Buckets below this threshold are partial edge buckets whose TPS and KB/s
-     * values would be artificially deflated by the full-bucket-size denominator.
-     */
-    private static final double MIN_BUCKET_COVERAGE_RATIO = 0.90;
 
     // ─────────────────────────────────────────────────────────────
     // CSV parsing
@@ -260,7 +267,7 @@ final class JtlParserCore {
     static String[] extractPass1Fields(String line, int maxIdx, char delimiter) {
         String[] result = new String[maxIdx + 1];
         Arrays.fill(result, "");
-        int     fieldIdx = 0;
+        int fieldIdx = 0;
         StringBuilder current = new StringBuilder(32);
         boolean inQuotes = false;
 
@@ -506,7 +513,7 @@ final class JtlParserCore {
         if (hasOffset) {
             long relativeSec = (sr.getTimeStamp() - options.minTimestamp) / 1000L;
             if (options.startOffset > 0 && relativeSec < options.startOffset) return false;
-            if (options.endOffset   > 0 && relativeSec > options.endOffset)   return false;
+            if (options.endOffset > 0 && relativeSec > options.endOffset) return false;
         }
         return true;
     }

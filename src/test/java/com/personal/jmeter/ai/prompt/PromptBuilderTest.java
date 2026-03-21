@@ -7,6 +7,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullSource;
 
 import java.net.URL;
 import java.util.LinkedHashMap;
@@ -295,6 +298,127 @@ class PromptBuilderTest {
                     "userMessage JSON must contain the exact avgLatencyMs value");
             assertTrue(msg.contains("\"avgConnectMs\":75"),
                     "userMessage JSON must contain the exact avgConnectMs value");
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // parseErrorSlaThreshold — parameterized
+    // ─────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("parseErrorSlaThreshold")
+    class ParseErrorSlaThresholdTests {
+
+        @ParameterizedTest(name = "[{index}] input=''{0}'' → {1}")
+        @DisplayName("valid values parsed correctly")
+        @CsvSource({
+                "5%,    5.0",
+                "5,     5.0",
+                "10%,   10.0",
+                "0.5%,  0.5",
+                "99%,   99.0",
+        })
+        void validValues(String input, double expected) {
+            assertEquals(expected, PromptBuilder.parseErrorSlaThreshold(input), 0.0001);
+        }
+
+        @ParameterizedTest(name = "[{index}] input=''{0}'' → -1.0 (no SLA)")
+        @DisplayName("absent / sentinel values return -1")
+        @CsvSource({
+                "Not configured",
+                "NOT CONFIGURED",
+                "not configured",
+        })
+        void sentinelValues(String input) {
+            assertEquals(-1.0, PromptBuilder.parseErrorSlaThreshold(input), 0.0001);
+        }
+
+        @ParameterizedTest(name = "[{index}] input=''{0}'' → -1.0 (no SLA)")
+        @DisplayName("blank string returns -1")
+        @NullSource
+        void nullReturnsNoSla(String input) {
+            assertEquals(-1.0, PromptBuilder.parseErrorSlaThreshold(input), 0.0001);
+        }
+
+        @Test
+        @DisplayName("empty string returns -1")
+        void emptyReturnsNoSla() {
+            assertEquals(-1.0, PromptBuilder.parseErrorSlaThreshold(""), 0.0001);
+        }
+
+        @Test
+        @DisplayName("blank string returns -1")
+        void blankReturnsNoSla() {
+            assertEquals(-1.0, PromptBuilder.parseErrorSlaThreshold("   "), 0.0001);
+        }
+
+        @Test
+        @DisplayName("zero value returns -1 (not a valid threshold)")
+        void zeroReturnsNoSla() {
+            assertEquals(-1.0, PromptBuilder.parseErrorSlaThreshold("0%"), 0.0001);
+        }
+
+        @Test
+        @DisplayName("unparseable value returns -1")
+        void unparseableReturnsNoSla() {
+            assertEquals(-1.0, PromptBuilder.parseErrorSlaThreshold("abc%"), 0.0001);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // parseRtSlaThreshold — parameterized
+    // ─────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("parseRtSlaThreshold")
+    class ParseRtSlaThresholdTests {
+
+        @ParameterizedTest(name = "[{index}] input=''{0}'' → {1}")
+        @DisplayName("valid values parsed correctly")
+        @CsvSource({
+                "2000 ms,  2000.0",
+                "2000ms,   2000.0",
+                "500 ms,   500.0",
+                "100,      100.0",
+                "1,        1.0",
+        })
+        void validValues(String input, double expected) {
+            assertEquals(expected, PromptBuilder.parseRtSlaThreshold(input), 0.0001);
+        }
+
+        @ParameterizedTest(name = "[{index}] input=''{0}'' → -1.0 (no SLA)")
+        @DisplayName("sentinel values return -1")
+        @CsvSource({
+                "Not configured",
+                "NOT CONFIGURED",
+        })
+        void sentinelValues(String input) {
+            assertEquals(-1.0, PromptBuilder.parseRtSlaThreshold(input), 0.0001);
+        }
+
+        @ParameterizedTest(name = "[{index}] null → -1.0 (no SLA)")
+        @DisplayName("null returns -1")
+        @NullSource
+        void nullReturnsNoSla(String input) {
+            assertEquals(-1.0, PromptBuilder.parseRtSlaThreshold(input), 0.0001);
+        }
+
+        @Test
+        @DisplayName("empty string returns -1")
+        void emptyReturnsNoSla() {
+            assertEquals(-1.0, PromptBuilder.parseRtSlaThreshold(""), 0.0001);
+        }
+
+        @Test
+        @DisplayName("zero value returns -1 (not a valid threshold)")
+        void zeroReturnsNoSla() {
+            assertEquals(-1.0, PromptBuilder.parseRtSlaThreshold("0 ms"), 0.0001);
+        }
+
+        @Test
+        @DisplayName("unparseable value returns -1")
+        void unparseableReturnsNoSla() {
+            assertEquals(-1.0, PromptBuilder.parseRtSlaThreshold("fast ms"), 0.0001);
         }
     }
 }

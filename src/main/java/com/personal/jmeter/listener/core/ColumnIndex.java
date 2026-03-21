@@ -13,7 +13,9 @@ package com.personal.jmeter.listener.core;
  */
 public final class ColumnIndex {
 
-    /** All column header names in display order. */
+    /**
+     * All column header names in display order.
+     */
     public static final String[] ALL_COLUMNS = {
             "Transaction Name", "Count", "Passed",
             "Failed", "Avg (ms)", "Min (ms)",
@@ -21,16 +23,24 @@ public final class ColumnIndex {
             "Received KB/Sec", "Avg Bytes"
     };
 
-    /** Model index of the configurable percentile column. */
+    /**
+     * Model index of the configurable percentile column.
+     */
     public static final int PERCENTILE_COL_INDEX = 7;
 
-    /** Model index of Avg (ms) — used by {@link SlaRowRenderer}. */
+    /**
+     * Model index of Avg (ms) — used by {@link SlaRowRenderer}.
+     */
     public static final int AVG_COL_INDEX = 4;
 
-    /** Model index of Error Rate — used by {@link SlaRowRenderer}. */
+    /**
+     * Model index of Error Rate — used by {@link SlaRowRenderer}.
+     */
     public static final int ERROR_RATE_COL_INDEX = 9;
 
-    /** Model index of Transaction Name — used by {@link SlaRowRenderer}. */
+    /**
+     * Model index of Transaction Name — used by {@link SlaRowRenderer}.
+     */
     public static final int NAME_COL_INDEX = 0;
 
     private ColumnIndex() { /* constants-only — not instantiable */ }

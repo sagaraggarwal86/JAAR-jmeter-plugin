@@ -230,6 +230,12 @@ class HtmlTransactionTableTest {
         }
 
         @Test
+        @DisplayName("single-quote escaped to &#39;")
+        void singleQuoteEscaped() {
+            assertEquals("it&#39;s", HtmlReportRenderer.escapeHtml("it's"));
+        }
+
+        @Test
         @DisplayName("all special chars escaped together")
         void allSpecialCharsEscaped() {
             assertEquals("&lt;a&gt; &amp; &lt;b&gt;",

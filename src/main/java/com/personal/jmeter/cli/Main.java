@@ -1,13 +1,12 @@
 package com.personal.jmeter.cli;
 
+import com.personal.jmeter.ai.provider.AiProviderException;
+import com.personal.jmeter.ai.provider.AiServiceException;
+import com.personal.jmeter.parser.JtlParseException;
 import org.apache.jmeter.util.JMeterUtils;
 
 import java.io.IOException;
 import java.net.URL;
-
-import com.personal.jmeter.ai.provider.AiProviderException;
-import com.personal.jmeter.ai.provider.AiServiceException;
-import com.personal.jmeter.parser.JtlParseException;
 
 /**
  * Command-line entry point for JAAR — JTL AI Analysis &amp; Reporting.

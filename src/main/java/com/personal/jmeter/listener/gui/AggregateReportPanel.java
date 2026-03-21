@@ -2,12 +2,7 @@ package com.personal.jmeter.listener.gui;
 
 import com.personal.jmeter.ai.provider.AiProviderConfig;
 import com.personal.jmeter.ai.provider.AiProviderRegistry;
-import com.personal.jmeter.listener.core.ColumnIndex;
-import com.personal.jmeter.listener.core.CsvExporter;
-import com.personal.jmeter.listener.core.ScenarioMetadata;
-import com.personal.jmeter.listener.core.SlaConfig;
-import com.personal.jmeter.listener.core.SlaRowRenderer;
-import com.personal.jmeter.listener.core.TablePopulator;
+import com.personal.jmeter.listener.core.*;
 import com.personal.jmeter.parser.DelimiterResolver;
 import com.personal.jmeter.parser.JTLParser;
 import com.personal.jmeter.parser.TimestampFormatResolver;
@@ -22,15 +17,17 @@ import java.awt.*;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.io.IOException;
-import java.util.*;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 
 /**
  * Reusable Swing panel for the JAAR.
- *
+ * <p>
  * // DESIGN: extends JPanel — required by Swing API; composition not possible
  * for a reusable embedded panel used by both ListenerGUI and UIPreview.
  *
@@ -55,43 +52,52 @@ import java.util.function.Supplier;
 public class AggregateReportPanel extends JPanel {
 
     // ── Shared fonts (also used by UIPreview and AiReportLauncher) ──
-    /** Shared header font — bold 13pt, used for table column headers. */
-    public static final Font FONT_HEADER  = new Font("Calibri", Font.BOLD,  13);
-    /** Shared body font — plain 13pt, matches table column header size. */
+    /**
+     * Shared header font — bold 13pt, used for table column headers.
+     */
+    public static final Font FONT_HEADER = new Font("Calibri", Font.BOLD, 13);
+    /**
+     * Shared body font — plain 13pt, matches table column header size.
+     */
     public static final Font FONT_REGULAR = new Font("Calibri", Font.PLAIN, 13);
 
     private static final Logger log = LoggerFactory.getLogger(AggregateReportPanel.class);
 
     // ── Filter fields ────────────────────────────────────────────
-    final JTextField startOffsetField       = new JTextField("", 10);
-    final JTextField endOffsetField         = new JTextField("", 10);
-    final JTextField percentileField        = new JTextField("90", 10);
+    final JTextField startOffsetField = new JTextField("", 10);
+    final JTextField endOffsetField = new JTextField("", 10);
+    final JTextField percentileField = new JTextField("90", 10);
     final JTextField transactionSearchField = new JTextField("", 15);
-    final JCheckBox  regexCheckBox          = new JCheckBox("RegEx");
+    final JCheckBox regexCheckBox = new JCheckBox("RegEx");
     final JComboBox<String> filterModeCombo = new JComboBox<>(new String[]{"Include", "Exclude"});
 
     // ── Time-info fields ─────────────────────────────────────────
     final JTextField startTimeField = new JTextField("", 20);
-    final JTextField endTimeField   = new JTextField("", 20);
-    final JTextField durationField  = new JTextField("", 20);
+    final JTextField endTimeField = new JTextField("", 20);
+    final JTextField durationField = new JTextField("", 20);
 
     // ── SLA threshold fields (not persisted in .jmx) ─────────────
-    private final JTextField        errorPctSlaField    = new JTextField("", 5);
-    private final JComboBox<String> rtMetricCombo       = new JComboBox<>(new String[]{"Avg (ms)", "P90 (ms)"});
-    private final JTextField        rtThresholdSlaField = new JTextField("", 6);
+    private final JTextField errorPctSlaField = new JTextField("", 5);
+    private final JComboBox<String> rtMetricCombo = new JComboBox<>(new String[]{"Avg (ms)", "P90 (ms)"});
+    private final JTextField rtThresholdSlaField = new JTextField("", 6);
 
     // ── Chart interval field (not persisted in .jmx) ─────────────
     private final JTextField chartIntervalField = new JTextField("0", 4);
 
     // ── Table components ─────────────────────────────────────────
-    private final DefaultTableModel   tableModel = new DefaultTableModel(ColumnIndex.ALL_COLUMNS, 0) {
-        @Override public boolean isCellEditable(int row, int col) { return false; }
+    private final DefaultTableModel tableModel = new DefaultTableModel(ColumnIndex.ALL_COLUMNS, 0) {
+        @Override
+        public boolean isCellEditable(int row, int col) {
+            return false;
+        }
     };
-    private final JTable              resultsTable    = new JTable(tableModel);
+    private final JTable resultsTable = new JTable(tableModel);
     private final JCheckBoxMenuItem[] columnMenuItems = new JCheckBoxMenuItem[ColumnIndex.ALL_COLUMNS.length];
-    private final TableColumn[]       allTableColumns = new TableColumn[ColumnIndex.ALL_COLUMNS.length];
+    private final TableColumn[] allTableColumns = new TableColumn[ColumnIndex.ALL_COLUMNS.length];
 
-    /** Provider dropdown — populated lazily when opened; null item = no providers configured. */
+    /**
+     * Provider dropdown — populated lazily when opened; null item = no providers configured.
+     */
     private final JComboBox<AiProviderConfig> providerCombo = new JComboBox<>();
 
     // ── Background executor ───────────────────────────────────────
@@ -102,21 +108,19 @@ public class AggregateReportPanel extends JPanel {
     });
 
     // ── Collaborators ────────────────────────────────────────────
-    private final TablePopulator    tablePopulator;
-    private final CsvExporter       csvExporter;
-    private final AiReportLauncher  aiReportLauncher;
+    private final TablePopulator tablePopulator;
+    private final CsvExporter csvExporter;
+    private final AiReportLauncher aiReportLauncher;
 
     // ── State ────────────────────────────────────────────────────
-    private Map<String, SamplingStatCalculator>  cachedResults          = Collections.emptyMap();
-    private List<JTLParser.TimeBucket>           cachedBuckets          = Collections.emptyList();
-    private List<Map<String, Object>>            cachedErrorTypeSummary = Collections.emptyList();
-    private long    cachedAvgLatencyMs   = 0L;
-    private long    cachedAvgConnectMs   = 0L;
+    private Map<String, SamplingStatCalculator> cachedResults = Collections.emptyMap();
+    private List<JTLParser.TimeBucket> cachedBuckets = Collections.emptyList();
+    private List<Map<String, Object>> cachedErrorTypeSummary = Collections.emptyList();
+    private long cachedAvgLatencyMs = 0L;
+    private long cachedAvgConnectMs = 0L;
     private boolean cachedLatencyPresent = false;
-    private String  lastLoadedFilePath;
+    private String lastLoadedFilePath;
     private boolean suppressReload;
-    private Supplier<ScenarioMetadata> metadataSupplier = ScenarioMetadata::empty;
-
     /**
      * Debounce timer for JTL reloads triggered by DocumentListener keystrokes.
      * Each keystroke restarts the 300 ms window; the parse only fires when the
@@ -124,6 +128,8 @@ public class AggregateReportPanel extends JPanel {
      * character in percentileField, startOffsetField, and endOffsetField.
      */
     private final javax.swing.Timer reloadDebounceTimer = new javax.swing.Timer(300, e -> reloadJtl());
+    private Supplier<ScenarioMetadata> metadataSupplier = ScenarioMetadata::empty;
+
     {
         reloadDebounceTimer.setRepeats(false);
     }
@@ -139,9 +145,9 @@ public class AggregateReportPanel extends JPanel {
         super(new BorderLayout(5, 5));
         setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
 
-        tablePopulator   = new TablePopulator(tableModel, resultsTable,
+        tablePopulator = new TablePopulator(tableModel, resultsTable,
                 allTableColumns, columnMenuItems);
-        csvExporter      = new CsvExporter(this, tableModel, allTableColumns,
+        csvExporter = new CsvExporter(this, tableModel, allTableColumns,
                 columnMenuItems, this::buildSlaConfig);
         aiReportLauncher = new AiReportLauncher(this, aiExecutor, new PanelDataProvider());
 
@@ -171,6 +177,34 @@ public class AggregateReportPanel extends JPanel {
     // Public API
     // ─────────────────────────────────────────────────────────────
 
+    private static boolean isValidErrorPct(String s) {
+        if (s == null || s.isBlank()) return false;
+        try {
+            int n = Integer.parseInt(s.trim());
+            return n >= 1 && n <= 99;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    private static boolean isValidRtThreshold(String s) {
+        if (s == null || s.isBlank()) return false;
+        try {
+            return Long.parseLong(s.trim()) > 0;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    private static int parseIntField(JTextField field, int fallback) {
+        try {
+            String t = field.getText().trim();
+            return t.isEmpty() ? fallback : Integer.parseInt(t);
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
     /**
      * Parses and displays the given JTL file without resetting SLA fields.
      * Used exclusively by {@link ListenerGUI#configure}
@@ -184,12 +218,12 @@ public class AggregateReportPanel extends JPanel {
         try {
             JTLParser.FilterOptions opts = buildFilterOptions();
             JTLParser.ParseResult result = new JTLParser().parse(filePath, opts);
-            cachedResults          = result.results;
-            cachedBuckets          = result.timeBuckets;
+            cachedResults = result.results;
+            cachedBuckets = result.timeBuckets;
             cachedErrorTypeSummary = result.errorTypeSummary;
-            cachedAvgLatencyMs     = result.avgLatencyMs;
-            cachedAvgConnectMs     = result.avgConnectMs;
-            cachedLatencyPresent   = result.latencyPresent;
+            cachedAvgLatencyMs = result.avgLatencyMs;
+            cachedAvgConnectMs = result.avgConnectMs;
+            cachedLatencyPresent = result.latencyPresent;
             repopulate(opts.percentile);
             updateTimeInfo(result);
         } catch (IOException e) {
@@ -205,7 +239,9 @@ public class AggregateReportPanel extends JPanel {
      * @param filePath path to the JTL file
      * @return {@code true} on success
      */
-    public boolean loadJtlFile(String filePath) { return loadJtlFile(filePath, false); }
+    public boolean loadJtlFile(String filePath) {
+        return loadJtlFile(filePath, false);
+    }
 
     /**
      * Parses and displays the given JTL file.
@@ -223,12 +259,12 @@ public class AggregateReportPanel extends JPanel {
         try {
             JTLParser.FilterOptions opts = buildFilterOptions();
             JTLParser.ParseResult result = new JTLParser().parse(filePath, opts);
-            cachedResults          = result.results;
-            cachedBuckets          = result.timeBuckets;
+            cachedResults = result.results;
+            cachedBuckets = result.timeBuckets;
             cachedErrorTypeSummary = result.errorTypeSummary;
-            cachedAvgLatencyMs     = result.avgLatencyMs;
-            cachedAvgConnectMs     = result.avgConnectMs;
-            cachedLatencyPresent   = result.latencyPresent;
+            cachedAvgLatencyMs = result.avgLatencyMs;
+            cachedAvgConnectMs = result.avgConnectMs;
+            cachedLatencyPresent = result.latencyPresent;
             repopulate(opts.percentile);
             updateTimeInfo(result);
             if (showSuccessDialog) {
@@ -254,12 +290,12 @@ public class AggregateReportPanel extends JPanel {
      */
     public void clearAll() {
         tableModel.setRowCount(0);
-        cachedResults          = Collections.emptyMap();
-        cachedBuckets          = Collections.emptyList();
+        cachedResults = Collections.emptyMap();
+        cachedBuckets = Collections.emptyList();
         cachedErrorTypeSummary = Collections.emptyList();
-        cachedAvgLatencyMs     = 0L;
-        cachedAvgConnectMs     = 0L;
-        cachedLatencyPresent   = false;
+        cachedAvgLatencyMs = 0L;
+        cachedAvgConnectMs = 0L;
+        cachedLatencyPresent = false;
         lastLoadedFilePath = null;
         suppressReload = false;
         startOffsetField.setText("");
@@ -308,7 +344,9 @@ public class AggregateReportPanel extends JPanel {
      *
      * @param suppress {@code true} to suppress reloads
      */
-    public void setSuppressReload(boolean suppress) { this.suppressReload = suppress; }
+    public void setSuppressReload(boolean suppress) {
+        this.suppressReload = suppress;
+    }
 
     /**
      * Sets the supplier invoked when the user clicks "Generate AI Report".
@@ -319,56 +357,156 @@ public class AggregateReportPanel extends JPanel {
         this.metadataSupplier = supplier != null ? supplier : ScenarioMetadata::empty;
     }
 
-    /** @return start offset text */
-    public String getStartOffset()        { return startOffsetField.getText().trim(); }
-    /** @param v value; null treated as empty string */
-    public void   setStartOffset(String v){ startOffsetField.setText(Objects.requireNonNullElse(v, "")); }
-    /** @return end offset text */
-    public String getEndOffset()          { return endOffsetField.getText().trim(); }
-    /** @param v value; null treated as empty string */
-    public void   setEndOffset(String v)  { endOffsetField.setText(Objects.requireNonNullElse(v, "")); }
-    /** @return percentile text */
-    public String getPercentileText()     { return percentileField.getText().trim(); }
-    /** @param v value; null or blank resets to "90" */
-    public void   setPercentile(String v) { percentileField.setText((v == null || v.isBlank()) ? "90" : v); }
+    /**
+     * @return start offset text
+     */
+    public String getStartOffset() {
+        return startOffsetField.getText().trim();
+    }
 
-    /** @return error % SLA field text */
-    public String getErrorPctSla()        { return errorPctSlaField.getText().trim(); }
-    /** @param v value; null treated as empty string */
-    public void   setErrorPctSla(String v){ errorPctSlaField.setText(Objects.requireNonNullElse(v, "")); }
+    /**
+     * @param v value; null treated as empty string
+     */
+    public void setStartOffset(String v) {
+        startOffsetField.setText(Objects.requireNonNullElse(v, ""));
+    }
 
-    /** @return RT threshold SLA field text */
-    public String getRtThresholdSla()        { return rtThresholdSlaField.getText().trim(); }
-    /** @param v value; null treated as empty string */
-    public void   setRtThresholdSla(String v){ rtThresholdSlaField.setText(Objects.requireNonNullElse(v, "")); }
+    /**
+     * @return end offset text
+     */
+    public String getEndOffset() {
+        return endOffsetField.getText().trim();
+    }
 
-    /** @return RT metric combo selected index (0 = Avg, 1 = Pnn) */
-    public int  getRtMetricIndex()       { return rtMetricCombo.getSelectedIndex(); }
-    /** @param i index to select; out-of-range defaults to 1 */
-    public void setRtMetricIndex(int i)  { rtMetricCombo.setSelectedIndex((i == 0) ? 0 : 1); }
+    /**
+     * @param v value; null treated as empty string
+     */
+    public void setEndOffset(String v) {
+        endOffsetField.setText(Objects.requireNonNullElse(v, ""));
+    }
 
-    /** @return chart interval field text */
-    public String getChartInterval()        { return chartIntervalField.getText().trim(); }
-    /** @param v value; null treated as "0" */
-    public void   setChartInterval(String v){ chartIntervalField.setText((v == null || v.isBlank()) ? "0" : v); }
+    /**
+     * @return percentile text
+     */
+    public String getPercentileText() {
+        return percentileField.getText().trim();
+    }
 
-    /** @return transaction search field text */
-    public String getSearch()        { return transactionSearchField.getText().trim(); }
-    /** @param v value; null treated as empty string */
-    public void   setSearch(String v){ transactionSearchField.setText(Objects.requireNonNullElse(v, "")); }
+    /**
+     * @param v value; null or blank resets to "90"
+     */
+    public void setPercentile(String v) {
+        percentileField.setText((v == null || v.isBlank()) ? "90" : v);
+    }
 
-    /** @return regex checkbox state */
-    public boolean isRegex()           { return regexCheckBox.isSelected(); }
-    /** @param v state to set */
-    public void    setRegex(boolean v) { regexCheckBox.setSelected(v); }
+    /**
+     * @return error % SLA field text
+     */
+    public String getErrorPctSla() {
+        return errorPctSlaField.getText().trim();
+    }
 
-    /** @return filter mode combo selected index (0 = Include, 1 = Exclude) */
-    public int  getFilterModeIndex()       { return filterModeCombo.getSelectedIndex(); }
-    /** @param i index to select; out-of-range defaults to 0 (Include) */
-    public void setFilterModeIndex(int i)  { filterModeCombo.setSelectedIndex((i == 1) ? 1 : 0); }
+    /**
+     * @param v value; null treated as empty string
+     */
+    public void setErrorPctSla(String v) {
+        errorPctSlaField.setText(Objects.requireNonNullElse(v, ""));
+    }
 
-    /** @return the last loaded JTL file path, or {@code null} if none loaded */
-    public String getLastLoadedFilePath() { return lastLoadedFilePath; }
+    /**
+     * @return RT threshold SLA field text
+     */
+    public String getRtThresholdSla() {
+        return rtThresholdSlaField.getText().trim();
+    }
+
+    /**
+     * @param v value; null treated as empty string
+     */
+    public void setRtThresholdSla(String v) {
+        rtThresholdSlaField.setText(Objects.requireNonNullElse(v, ""));
+    }
+
+    /**
+     * @return RT metric combo selected index (0 = Avg, 1 = Pnn)
+     */
+    public int getRtMetricIndex() {
+        return rtMetricCombo.getSelectedIndex();
+    }
+
+    /**
+     * @param i index to select; out-of-range defaults to 1
+     */
+    public void setRtMetricIndex(int i) {
+        rtMetricCombo.setSelectedIndex((i == 0) ? 0 : 1);
+    }
+
+    /**
+     * @return chart interval field text
+     */
+    public String getChartInterval() {
+        return chartIntervalField.getText().trim();
+    }
+
+    /**
+     * @param v value; null treated as "0"
+     */
+    public void setChartInterval(String v) {
+        chartIntervalField.setText((v == null || v.isBlank()) ? "0" : v);
+    }
+
+    /**
+     * @return transaction search field text
+     */
+    public String getSearch() {
+        return transactionSearchField.getText().trim();
+    }
+
+    /**
+     * @param v value; null treated as empty string
+     */
+    public void setSearch(String v) {
+        transactionSearchField.setText(Objects.requireNonNullElse(v, ""));
+    }
+
+    /**
+     * @return regex checkbox state
+     */
+    public boolean isRegex() {
+        return regexCheckBox.isSelected();
+    }
+
+    /**
+     * @param v state to set
+     */
+    public void setRegex(boolean v) {
+        regexCheckBox.setSelected(v);
+    }
+
+    /**
+     * @return filter mode combo selected index (0 = Include, 1 = Exclude)
+     */
+    public int getFilterModeIndex() {
+        return filterModeCombo.getSelectedIndex();
+    }
+
+    /**
+     * @param i index to select; out-of-range defaults to 0 (Include)
+     */
+    public void setFilterModeIndex(int i) {
+        filterModeCombo.setSelectedIndex((i == 1) ? 1 : 0);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Package-private API (used by collaborators and tests)
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * @return the last loaded JTL file path, or {@code null} if none loaded
+     */
+    public String getLastLoadedFilePath() {
+        return lastLoadedFilePath;
+    }
 
     /**
      * Returns the column visibility state as a comma-separated boolean string.
@@ -385,6 +523,10 @@ public class AggregateReportPanel extends JPanel {
         }
         return sb.toString();
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // SLA renderer installation
+    // ─────────────────────────────────────────────────────────────
 
     /**
      * Restores column visibility from a comma-separated boolean string.
@@ -405,28 +547,26 @@ public class AggregateReportPanel extends JPanel {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Package-private API (used by collaborators and tests)
-    // ─────────────────────────────────────────────────────────────
-
     JTLParser.FilterOptions buildFilterOptions() {
         JTLParser.FilterOptions opts = new JTLParser.FilterOptions();
-        opts.startOffset         = parseIntField(startOffsetField, 0);
-        opts.endOffset           = parseIntField(endOffsetField,   0);
-        opts.percentile          = readPercentile();
+        opts.startOffset = parseIntField(startOffsetField, 0);
+        opts.endOffset = parseIntField(endOffsetField, 0);
+        opts.percentile = readPercentile();
         opts.chartIntervalSeconds = parseIntField(chartIntervalField, 0);
-        opts.delimiter           = DelimiterResolver.resolve(
+        opts.delimiter = DelimiterResolver.resolve(
                 AiReportLauncher.resolveJmeterHomeStatic());
-        opts.timestampFormatter  = TimestampFormatResolver.resolve(
+        opts.timestampFormatter = TimestampFormatResolver.resolve(
                 AiReportLauncher.resolveJmeterHomeStatic());
         return opts;
     }
 
-    List<String[]> getVisibleTableRows() { return tablePopulator.getVisibleRows(); }
+    // ─────────────────────────────────────────────────────────────
+    // Bottom panel
+    // ─────────────────────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────
-    // SLA renderer installation
-    // ─────────────────────────────────────────────────────────────
+    List<String[]> getVisibleTableRows() {
+        return tablePopulator.getVisibleRows();
+    }
 
     /**
      * Installs {@link SlaRowRenderer} on the table as the default renderer.
@@ -442,6 +582,10 @@ public class AggregateReportPanel extends JPanel {
         resultsTable.setDefaultRenderer(Object.class, renderer);
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Field listeners
+    // ─────────────────────────────────────────────────────────────
+
     /**
      * Builds a live {@link SlaConfig} snapshot from current field values.
      * Invalid or blank fields are treated as disabled thresholds — no exception
@@ -451,7 +595,7 @@ public class AggregateReportPanel extends JPanel {
      */
     private SlaConfig buildSlaConfig() {
         String errorPctStr = errorPctSlaField.getText().trim();
-        String rtStr       = rtThresholdSlaField.getText().trim();
+        String rtStr = rtThresholdSlaField.getText().trim();
 
         // Silently fall back to disabled for any unparseable values
         // (validation has already fired on focus-lost before this is called)
@@ -460,8 +604,8 @@ public class AggregateReportPanel extends JPanel {
                     ? SlaConfig.RtMetric.AVG
                     : SlaConfig.RtMetric.PNN;
             return SlaConfig.from(
-                    isValidErrorPct(errorPctStr)  ? errorPctStr : "",
-                    isValidRtThreshold(rtStr)     ? rtStr       : "",
+                    isValidErrorPct(errorPctStr) ? errorPctStr : "",
+                    isValidRtThreshold(rtStr) ? rtStr : "",
                     metric,
                     readPercentile());
         } catch (NumberFormatException e) {
@@ -470,7 +614,7 @@ public class AggregateReportPanel extends JPanel {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Bottom panel
+    // Validation helpers
     // ─────────────────────────────────────────────────────────────
 
     private JPanel buildBottomPanel() {
@@ -482,11 +626,18 @@ public class AggregateReportPanel extends JPanel {
         providerCombo.setFont(FONT_REGULAR);
         providerCombo.setToolTipText("AI provider to use for report generation");
         providerCombo.addPopupMenuListener(new javax.swing.event.PopupMenuListener() {
-            @Override public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
+            @Override
+            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e) {
                 refreshProviderCombo();
             }
-            @Override public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
-            @Override public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {}
+
+            @Override
+            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {
+            }
+
+            @Override
+            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {
+            }
         });
         refreshProviderCombo(); // initial load
 
@@ -499,7 +650,10 @@ public class AggregateReportPanel extends JPanel {
         aiBtn.setFont(FONT_REGULAR);
         aiBtn.setToolTipText(
                 "Analyse the loaded JTL data with AI and generate an HTML performance report");
-        aiBtn.addActionListener(e -> { refreshProviderCombo(); aiReportLauncher.launch(aiBtn); });
+        aiBtn.addActionListener(e -> {
+            refreshProviderCombo();
+            aiReportLauncher.launch(aiBtn);
+        });
 
         // Vertical divider between AI button and chart interval
         JSeparator divider = new JSeparator(SwingConstants.VERTICAL);
@@ -564,9 +718,7 @@ public class AggregateReportPanel extends JPanel {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Field listeners
-    // ─────────────────────────────────────────────────────────────
+    // ── Inline validation predicates (used by buildSlaConfig) ──
 
     private void setupFieldListeners() {
         // ── Percentile: update column header + repopulate from cache + update combo label ──
@@ -587,9 +739,15 @@ public class AggregateReportPanel extends JPanel {
 
         // ── Transaction search: repopulate on change ──
         transactionSearchField.getDocument().addDocumentListener(
-                (SimpleDocListener) () -> { if (!cachedResults.isEmpty()) repopulate(readPercentile()); });
-        regexCheckBox.addActionListener(e -> { if (!cachedResults.isEmpty()) repopulate(readPercentile()); });
-        filterModeCombo.addActionListener(e -> { if (!cachedResults.isEmpty()) repopulate(readPercentile()); });
+                (SimpleDocListener) () -> {
+                    if (!cachedResults.isEmpty()) repopulate(readPercentile());
+                });
+        regexCheckBox.addActionListener(e -> {
+            if (!cachedResults.isEmpty()) repopulate(readPercentile());
+        });
+        filterModeCombo.addActionListener(e -> {
+            if (!cachedResults.isEmpty()) repopulate(readPercentile());
+        });
 
         // ── SLA fields: live repaint on change ──
         SimpleDocListener slaRepaintListener = () -> resultsTable.repaint();
@@ -616,10 +774,6 @@ public class AggregateReportPanel extends JPanel {
                 "Response Time threshold must be a positive integer in ms (or leave blank).");
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Validation helpers
-    // ─────────────────────────────────────────────────────────────
-
     private void addPositiveIntFocusValidator(JTextField field, String message) {
         field.addFocusListener(new FocusAdapter() {
             @Override
@@ -637,6 +791,10 @@ public class AggregateReportPanel extends JPanel {
             }
         });
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // Percentile / column header helpers
+    // ─────────────────────────────────────────────────────────────
 
     private void addRangeFocusValidator(JTextField field, int min, int max, String message) {
         field.addFocusListener(new FocusAdapter() {
@@ -656,24 +814,6 @@ public class AggregateReportPanel extends JPanel {
         });
     }
 
-    // ── Inline validation predicates (used by buildSlaConfig) ──
-
-    private static boolean isValidErrorPct(String s) {
-        if (s == null || s.isBlank()) return false;
-        try { int n = Integer.parseInt(s.trim()); return n >= 1 && n <= 99; }
-        catch (NumberFormatException e) { return false; }
-    }
-
-    private static boolean isValidRtThreshold(String s) {
-        if (s == null || s.isBlank()) return false;
-        try { return Long.parseLong(s.trim()) > 0; }
-        catch (NumberFormatException e) { return false; }
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Percentile / column header helpers
-    // ─────────────────────────────────────────────────────────────
-
     private void updatePercentileColumnHeader() {
         String p = percentileField.getText().trim();
         if (p.isEmpty()) p = "90";
@@ -681,6 +821,10 @@ public class AggregateReportPanel extends JPanel {
         columnMenuItems[ColumnIndex.PERCENTILE_COL_INDEX].setText("P" + p + " (ms)");
         resultsTable.getTableHeader().repaint();
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // JTL reload
+    // ─────────────────────────────────────────────────────────────
 
     private void updateRtMetricComboLabel() {
         String p = percentileField.getText().trim();
@@ -691,22 +835,18 @@ public class AggregateReportPanel extends JPanel {
         rtMetricCombo.setSelectedIndex(selectedIdx);
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // JTL reload
-    // ─────────────────────────────────────────────────────────────
-
     private void reloadJtl() {
         if (suppressReload || lastLoadedFilePath == null
                 || !new java.io.File(lastLoadedFilePath).exists()) return;
         try {
             JTLParser.FilterOptions opts = buildFilterOptions();
             JTLParser.ParseResult result = new JTLParser().parse(lastLoadedFilePath, opts);
-            cachedResults          = result.results;
-            cachedBuckets          = result.timeBuckets;
+            cachedResults = result.results;
+            cachedBuckets = result.timeBuckets;
             cachedErrorTypeSummary = result.errorTypeSummary;
-            cachedAvgLatencyMs     = result.avgLatencyMs;
-            cachedAvgConnectMs     = result.avgConnectMs;
-            cachedLatencyPresent   = result.latencyPresent;
+            cachedAvgLatencyMs = result.avgLatencyMs;
+            cachedAvgConnectMs = result.avgConnectMs;
+            cachedLatencyPresent = result.latencyPresent;
             repopulate(opts.percentile);
             updateTimeInfo(result);
         } catch (IOException e) {
@@ -715,15 +855,15 @@ public class AggregateReportPanel extends JPanel {
         }
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Time info
+    // ─────────────────────────────────────────────────────────────
+
     private void repopulate(int percentile) {
         tablePopulator.populate(cachedResults, percentile,
                 transactionSearchField.getText().trim(), regexCheckBox.isSelected(),
                 filterModeCombo.getSelectedIndex() == 1);
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // Time info
-    // ─────────────────────────────────────────────────────────────
 
     private void updateTimeInfo(JTLParser.ParseResult result) {
         startTimeField.setText(result.formattedStartTime());
@@ -731,38 +871,88 @@ public class AggregateReportPanel extends JPanel {
         durationField.setText(result.formattedDuration());
     }
 
-    private static int parseIntField(JTextField field, int fallback) {
-        try {
-            String t = field.getText().trim();
-            return t.isEmpty() ? fallback : Integer.parseInt(t);
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
+    private int readPercentile() {
+        return parseIntField(percentileField, 90);
     }
-
-    private int readPercentile() { return parseIntField(percentileField, 90); }
 
     // ─────────────────────────────────────────────────────────────
     // DataProvider — wires AiReportLauncher to panel state
     // ─────────────────────────────────────────────────────────────
 
     private final class PanelDataProvider implements AiReportLauncher.DataProvider {
-        @Override public Map<String, SamplingStatCalculator> getCachedResults() { return cachedResults; }
-        @Override public List<String[]> getVisibleTableRows()  { return tablePopulator.getVisibleRows(); }
-        @Override public List<JTLParser.TimeBucket> getCachedBuckets() { return cachedBuckets; }
-        @Override public String getLastLoadedFilePath()  { return lastLoadedFilePath; }
-        @Override public ScenarioMetadata getMetadata()  { return metadataSupplier.get(); }
-        @Override public int    getPercentile()          { return readPercentile(); }
-        @Override public String getStartTime()           { return startTimeField.getText(); }
-        @Override public String getEndTime()             { return endTimeField.getText(); }
-        @Override public String getDuration()            { return durationField.getText(); }
-        @Override public AiProviderConfig getSelectedProvider() {
+        @Override
+        public Map<String, SamplingStatCalculator> getCachedResults() {
+            return cachedResults;
+        }
+
+        @Override
+        public List<String[]> getVisibleTableRows() {
+            return tablePopulator.getVisibleRows();
+        }
+
+        @Override
+        public List<JTLParser.TimeBucket> getCachedBuckets() {
+            return cachedBuckets;
+        }
+
+        @Override
+        public String getLastLoadedFilePath() {
+            return lastLoadedFilePath;
+        }
+
+        @Override
+        public ScenarioMetadata getMetadata() {
+            return metadataSupplier.get();
+        }
+
+        @Override
+        public int getPercentile() {
+            return readPercentile();
+        }
+
+        @Override
+        public String getStartTime() {
+            return startTimeField.getText();
+        }
+
+        @Override
+        public String getEndTime() {
+            return endTimeField.getText();
+        }
+
+        @Override
+        public String getDuration() {
+            return durationField.getText();
+        }
+
+        @Override
+        public AiProviderConfig getSelectedProvider() {
             return (AiProviderConfig) providerCombo.getSelectedItem();
         }
-        @Override public SlaConfig getSlaConfig() { return buildSlaConfig(); }
-        @Override public List<Map<String, Object>> getErrorTypeSummary() { return cachedErrorTypeSummary; }
-        @Override public long    getAvgLatencyMs()  { return cachedAvgLatencyMs;   }
-        @Override public long    getAvgConnectMs()  { return cachedAvgConnectMs;   }
-        @Override public boolean isLatencyPresent() { return cachedLatencyPresent; }
+
+        @Override
+        public SlaConfig getSlaConfig() {
+            return buildSlaConfig();
+        }
+
+        @Override
+        public List<Map<String, Object>> getErrorTypeSummary() {
+            return cachedErrorTypeSummary;
+        }
+
+        @Override
+        public long getAvgLatencyMs() {
+            return cachedAvgLatencyMs;
+        }
+
+        @Override
+        public long getAvgConnectMs() {
+            return cachedAvgConnectMs;
+        }
+
+        @Override
+        public boolean isLatencyPresent() {
+            return cachedLatencyPresent;
+        }
     }
 }
